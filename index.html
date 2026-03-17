@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>衔青网文社</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <nav class="nav-bar">
+            <div class="nav-logo">
+                <span class="logo-dot"></span>
+                <span class="logo-text">衔青网文社</span>
+            </div>
+            <div class="nav-links">
+                <a href="#" class="nav-link active" data-page="home">首页</a>
+                <a href="#" class="nav-link" data-page="activities">社团活动</a>
+                <a href="#" class="nav-link" data-page="works">社员作品</a>
+                <a href="#" class="nav-link" data-page="submit">我要投稿</a>
+                <a href="#" class="nav-link" data-page="recommend">推书广场</a>
+                <a href="#" class="nav-link" data-page="profile" id="profileLink" style="display:none;">我的</a>
+            </div>
+            <div class="nav-user">
+                <button class="btn btn-secondary btn-sm" id="loginBtn">登录</button>
+                <div class="user-info" id="userInfo" style="display:none;">
+                    <span class="user-avatar" id="userAvatar">U</span>
+                    <span class="user-name" id="userName"></span>
+                    <button class="btn btn-text btn-sm" id="logoutBtn">退出</button>
+                </div>
+            </div>
+            <div class="nav-toggle" id="navToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <section id="home" class="page active">
+                <div class="hero-section">
+                    <div class="hero-decoration">
+                        <div class="deco-line"></div>
+                        <div class="deco-dot"></div>
+                    </div>
+                    <div class="hero-content">
+                        <h1 class="hero-title">衔青网文社</h1>
+                        <p class="hero-subtitle">XIANQING FICTION CLUB</p>
+                        <div class="hero-divider"></div>
+                        <p class="hero-description">
+                            衔青网文社是一个热爱网络文学创作与交流的社团。
+                            我们汇聚志同道合的文字爱好者，在这里分享创作、交流心得、共同成长。
+                            无论你是喜欢玄幻奇幻、都市言情，还是科幻悬疑，这里都有属于你的一方天地。
+                        </p>
+                        <div class="hero-buttons">
+                            <button class="btn btn-primary" data-goto="activities">
+                                <span class="btn-text">查看社团活动</span>
+                                <span class="btn-line"></span>
+                            </button>
+                            <button class="btn btn-secondary" data-goto="works">
+                                <span class="btn-text">浏览社员作品</span>
+                                <span class="btn-line"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hero-decoration right">
+                        <div class="deco-dot"></div>
+                        <div class="deco-line"></div>
+                    </div>
+                </div>
+                <div class="features-section">
+                    <div class="section-header">
+                        <span class="section-dot"></span>
+                        <h2 class="section-title">社团特色</h2>
+                        <span class="section-line"></span>
+                    </div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                </svg>
+                            </div>
+                            <h3 class="feature-title">创作交流</h3>
+                            <p class="feature-desc">定期举办创作分享会，交流写作技巧与心得</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                </svg>
+                            </div>
+                            <h3 class="feature-title">社员互动</h3>
+                            <p class="feature-desc">活跃的社区氛围，结识志同道合的朋友</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                                </svg>
+                            </div>
+                            <h3 class="feature-title">作品展示</h3>
+                            <p class="feature-desc">展示你的创作才华，获得读者的认可与反馈</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="activities" class="page">
+                <div class="page-header">
+                    <span class="section-dot"></span>
+                    <h2 class="page-title">社团活动</h2>
+                    <span class="section-line"></span>
+                </div>
+                <div class="activities-grid" id="activitiesGrid">
+                </div>
+            </section>
+
+            <section id="works" class="page">
+                <div class="page-header">
+                    <span class="section-dot"></span>
+                    <h2 class="page-title">社员作品</h2>
+                    <span class="section-line"></span>
+                </div>
+                <div class="works-grid" id="worksGrid">
+                </div>
+            </section>
+
+            <section id="work-detail" class="page">
+                <div class="page-header">
+                    <button class="back-btn" data-goto="works">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 19l-7-7 7-7"/>
+                        </svg>
+                        <span>返回作品列表</span>
+                    </button>
+                </div>
+                <article class="work-detail" id="workDetail">
+                </article>
+            </section>
+
+            <section id="submit" class="page">
+                <div class="page-header">
+                    <span class="section-dot"></span>
+                    <h2 class="page-title">我要投稿</h2>
+                    <span class="section-line"></span>
+                </div>
+                <div class="form-container">
+                    <form id="submitForm" class="submit-form">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <span class="label-text">作品类型</span>
+                                <span class="label-required">*</span>
+                            </label>
+                            <div class="work-type-selector" id="workTypeSelector">
+                                <div class="work-type-option active" data-type="short">
+                                    <div class="work-type-option-title">短篇小说</div>
+                                    <div class="work-type-option-desc">一次性发布的完整作品</div>
+                                </div>
+                                <div class="work-type-option" data-type="chaptered">
+                                    <div class="work-type-option-title">分章节作品</div>
+                                    <div class="work-type-option-desc">多章节连载作品</div>
+                                </div>
+                            </div>
+                            <input type="hidden" name="workType" value="short">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <span class="label-text">作品标题</span>
+                                <span class="label-required">*</span>
+                            </label>
+                            <input type="text" name="title" class="form-input" required placeholder="请输入作品标题">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <span class="label-text">作者名</span>
+                                <span class="label-required">*</span>
+                            </label>
+                            <input type="text" name="author" class="form-input" required placeholder="请输入您的笔名或真名">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <span class="label-text">一句话简介</span>
+                                <span class="label-required">*</span>
+                            </label>
+                            <input type="text" name="summary" class="form-input" required placeholder="请用一句话介绍您的作品">
+                        </div>
+                        <div class="form-group" id="shortStoryGroup">
+                            <label class="form-label">
+                                <span class="label-text">作品正文</span>
+                                <span class="label-required">*</span>
+                            </label>
+                            <textarea name="content" id="shortContent" class="form-textarea" placeholder="请输入作品全文内容"></textarea>
+                            <div class="word-count" id="shortWordCount">字数：0 字</div>
+                        </div>
+                        <div class="chapters-container" id="chaptersContainer">
+                            <label class="form-label">
+                                <span class="label-text">章节内容</span>
+                                <span class="label-required">*</span>
+                            </label>
+                            <div id="chaptersList">
+                                <div class="chapter-item" data-chapter="1">
+                                    <div class="chapter-header">
+                                        <input type="text" class="chapter-title-input" name="chapterTitle_1" placeholder="章节标题（如：第一章 启程）">
+                                        <button type="button" class="remove-chapter-btn" onclick="App.removeChapter(1)">删除</button>
+                                    </div>
+                                    <textarea name="chapterContent_1" class="form-textarea chapter-content-input" placeholder="请输入章节内容"></textarea>
+                                </div>
+                            </div>
+                            <div class="word-count" id="chapterWordCount">总字数：0 字</div>
+                            <button type="button" class="add-chapter-btn" onclick="App.addChapter()">+ 添加新章节</button>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <span class="label-text">可见性设置</span>
+                            </label>
+                            <div class="visibility-selector">
+                                <label class="visibility-option">
+                                    <input type="radio" name="visibility" value="public" checked>
+                                    <span class="visibility-option-content">
+                                        <span class="visibility-icon">🌐</span>
+                                        <span class="visibility-text">
+                                            <span class="visibility-title">公开</span>
+                                            <span class="visibility-desc">所有人可见</span>
+                                        </span>
+                                    </span>
+                                </label>
+                                <label class="visibility-option">
+                                    <input type="radio" name="visibility" value="private">
+                                    <span class="visibility-option-content">
+                                        <span class="visibility-icon">🔒</span>
+                                        <span class="visibility-text">
+                                            <span class="visibility-title">仅自己可见</span>
+                                            <span class="visibility-desc">私密保存</span>
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">
+                            <span class="btn-text">提交投稿</span>
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <section id="recommend" class="page">
+                <div class="page-header">
+                    <span class="section-dot"></span>
+                    <h2 class="page-title">推书广场</h2>
+                    <span class="section-line"></span>
+                </div>
+                <div class="recommend-container">
+                    <div class="recommend-form-card">
+                        <h3 class="card-title">推荐一本好书</h3>
+                        <form id="recommendForm" class="recommend-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <span class="label-text">小说名称</span>
+                                        <span class="label-required">*</span>
+                                    </label>
+                                    <input type="text" name="bookName" class="form-input" required placeholder="请输入小说名称">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <span class="label-text">小说类型</span>
+                                        <span class="label-required">*</span>
+                                    </label>
+                                    <select name="bookType" class="form-select" required>
+                                        <option value="">请选择类型</option>
+                                        <option value="玄幻">玄幻</option>
+                                        <option value="奇幻">奇幻</option>
+                                        <option value="武侠">武侠</option>
+                                        <option value="仙侠">仙侠</option>
+                                        <option value="都市">都市</option>
+                                        <option value="言情">言情</option>
+                                        <option value="科幻">科幻</option>
+                                        <option value="悬疑">悬疑</option>
+                                        <option value="历史">历史</option>
+                                        <option value="其他">其他</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <span class="label-text">推荐评分</span>
+                                    <span class="label-required">*</span>
+                                </label>
+                                <div class="rating-input" id="ratingInput">
+                                    <span class="star" data-rating="1">★</span>
+                                    <span class="star" data-rating="2">★</span>
+                                    <span class="star" data-rating="3">★</span>
+                                    <span class="star" data-rating="4">★</span>
+                                    <span class="star" data-rating="5">★</span>
+                                    <input type="hidden" name="rating" value="5">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <span class="label-text">推荐人</span>
+                                    <span class="label-required">*</span>
+                                </label>
+                                <input type="text" name="recommender" class="form-input" required placeholder="请输入您的名称">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <span class="label-text">推荐理由</span>
+                                </label>
+                                <textarea name="reason" class="form-textarea" placeholder="请输入推荐理由（选填）"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <span class="btn-text">发布推荐</span>
+                                <span class="btn-line"></span>
+                            </button>
+                        </form>
+                    </div>
+                    <div class="recommend-list">
+                        <h3 class="card-title">推荐列表</h3>
+                        <div class="recommend-grid" id="recommendGrid">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="profile" class="page">
+                <div class="page-header">
+                    <span class="section-dot"></span>
+                    <h2 class="page-title">我的</h2>
+                    <span class="section-line"></span>
+                </div>
+                <div class="profile-container">
+                    <div class="profile-card">
+                        <div class="profile-header">
+                            <div class="profile-avatar" id="profileAvatar">U</div>
+                            <div class="profile-info">
+                                <h3 class="profile-name" id="profileName">用户名</h3>
+                                <p class="profile-stats">
+                                    <span id="profileWorkCount">0</span> 篇作品 · 
+                                    <span id="profileWordCount">0</span> 字
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="profile-section">
+                        <h3 class="section-subtitle">我的作品</h3>
+                        <div class="profile-tabs">
+                            <button class="tab-btn active" data-tab="all">全部</button>
+                            <button class="tab-btn" data-tab="public">公开</button>
+                            <button class="tab-btn" data-tab="private">私密</button>
+                        </div>
+                        <div class="works-grid" id="myWorksGrid">
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-line"></div>
+                <p class="footer-text">© 2024 衔青网文社 · 用文字连接世界</p>
+            </div>
+        </footer>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <img id="modalImage" src="" alt="">
+        </div>
+    </div>
+
+    <div id="loginModal" class="modal">
+        <div class="modal-card">
+            <span class="modal-close" id="loginModalClose">&times;</span>
+            <h2 class="modal-title" id="authModalTitle">登录</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">
+                        <span class="label-text">用户名</span>
+                        <span class="label-required">*</span>
+                    </label>
+                    <input type="text" name="username" class="form-input" required placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <span class="label-text">密码</span>
+                        <span class="label-required">*</span>
+                    </label>
+                    <input type="password" name="password" class="form-input" required placeholder="请输入密码">
+                </div>
+                <div class="form-group" id="registerFields" style="display:none;">
+                    <label class="form-label">
+                        <span class="label-text">确认密码</span>
+                        <span class="label-required">*</span>
+                    </label>
+                    <input type="password" name="confirmPassword" class="form-input" placeholder="请再次输入密码">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full" id="authSubmitBtn">登录</button>
+            </form>
+            <div class="auth-switch">
+                <span id="authSwitchText">还没有账号？</span>
+                <button type="button" class="btn btn-text" id="authSwitchBtn">立即注册</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
