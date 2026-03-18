@@ -1816,54 +1816,141 @@ const App = {
 
             if (settings) {
                 this.activitySettings = settings;
+                await this.showActivityStatus(settings);
+            } else {
+                this.showActivitySettingsForm(null);
             }
+        } catch (err) {
+            console.error('Load activity settings failed:', err);
+            this.showActivitySettingsForm(null);
+        }
+    },
 
-            const dailyGoal = settings?.daily_goal || 50;
-            const track = settings?.track || 'traditional';
+    async showActivityStatus(settings) {
+        const container = document.getElementById('activitySettingsContent');
+        if (!container) return;
 
-            container.innerHTML = `
-                <div class="activity-settings-form">
-                    <div class="form-group">
-                        <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: block;">选择赛道</label>
-                        <div class="track-selector">
-                            <div class="track-option ${track === 'traditional' ? 'active' : ''}" data-track="traditional" onclick="App.selectTrack('traditional')">
-                                <div class="track-option-title">传统赛道</div>
-                                <div class="track-option-desc">每日≥50字</div>
-                            </div>
-                            <div class="track-option ${track === 'ai' ? 'active' : ''}" data-track="ai" onclick="App.selectTrack('ai')">
-                                <div class="track-option-title">AI辅助赛道</div>
-                                <div class="track-option-desc">每日≥500字</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: block;">每日目标字数</label>
-                        <div class="daily-goal-options">
-                            <span class="daily-goal-option ${dailyGoal === 50 ? 'active' : ''}" onclick="App.selectDailyGoal(50)">50</span>
-                            <span class="daily-goal-option ${dailyGoal === 200 ? 'active' : ''}" onclick="App.selectDailyGoal(200)">200</span>
-                            <span class="daily-goal-option ${dailyGoal === 500 ? 'active' : ''}" onclick="App.selectDailyGoal(500)">500</span>
-                            <span class="daily-goal-option ${dailyGoal === 1000 ? 'active' : ''}" onclick="App.selectDailyGoal(1000)">1000</span>
-                            <span class="daily-goal-option ${dailyGoal === 2000 ? 'active' : ''}" onclick="App.selectDailyGoal(2000)">2000</span>
-                            <span class="daily-goal-option ${dailyGoal === 4000 ? 'active' : ''}" onclick="App.selectDailyGoal(4000)">4000</span>
-                        </div>
-                        <div class="daily-goal-custom" style="margin-top: 8px;">
-                            <span style="font-size: 13px;">自定义：</span>
-                            <input type="number" id="customGoalInput" min="50" placeholder="≥50" value="${![50, 200, 500, 1000, 2000, 4000].includes(dailyGoal) ? dailyGoal : ''}">
-                            <button class="btn btn-sm" onclick="App.setCustomGoal()">设置</button>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary btn-sm" onclick="App.saveActivitySettings()">保存设置</button>
+        const today = new Date().toISOString().split('T')[0];
+        let todayWords = 0;
+        let isChecked = false;
+
+        try {
+            const { data: todayWorks } = await dbClient
+                .from('works')
+                .select('word_count')
+                .eq('author_id', this.currentUser.id)
+                .eq('is_activity', true)
+                .gte('created_at', today + 'T00:00:00')
+                .lte('created_at', today + 'T23:59:59');
+
+            todayWords = (todayWorks || []).reduce((sum, w) => sum + (w.word_count || 0), 0);
+
+            const { data: checkin } = await dbClient
+                .from('activity_checkins')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .eq('date', today)
+                .single();
+
+            isChecked = !!checkin;
+        } catch (err) {
+            console.error('Load today words failed:', err);
+        }
+
+        const dailyGoal = settings?.daily_goal || 50;
+        const track = settings?.track || 'traditional';
+        const trackLabel = track === 'ai' ? 'AI辅助赛道' : '传统赛道';
+        const progress = Math.min(100, Math.round((todayWords / dailyGoal) * 100));
+
+        const changesThisMonth = settings?.changes_this_month || 0;
+        const canEdit = changesThisMonth < 3;
+
+        container.innerHTML = `
+            <div class="activity-status">
+                <div class="activity-track-badge ${track}">
+                    ${trackLabel}
                 </div>
-                <div class="current-streak" id="currentStreak">
+                <div class="daily-progress">
+                    <div class="progress-header">
+                        <span class="progress-label">今日进度</span>
+                        <span class="progress-value">${todayWords} / ${dailyGoal} 字</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${isChecked ? 'checked' : ''}" style="width: ${progress}%"></div>
+                    </div>
+                    <div class="progress-status">
+                        ${isChecked ? '✅ 今日已打卡' : todayWords > 0 ? `还需 ${Math.max(0, dailyGoal - todayWords)} 字` : '开始写作吧！'}
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="App.showEditSettingsForm()" ${!canEdit ? 'disabled title="本月修改次数已用完"' : ''}>
+                    ${canEdit ? '修改设置' : '本月已修改3次'}
+                </button>
+                <div class="current-streak ${isChecked ? 'checked' : ''}" id="currentStreak">
                     <div class="current-streak-value" id="streakDays">0</div>
                     <div class="current-streak-label">连续打卡天数</div>
                 </div>
-            `;
+            </div>
+        `;
 
-            this.loadStreakInfo();
-        } catch (err) {
-            console.error('Load activity settings failed:', err);
-            container.innerHTML = `<p style="color: var(--text-muted); text-align: center;">加载设置失败</p>`;
+        this.loadStreakInfo();
+    },
+
+    showActivitySettingsForm(settings) {
+        const container = document.getElementById('activitySettingsContent');
+        if (!container) return;
+
+        const dailyGoal = settings?.daily_goal || 50;
+        const track = settings?.track || 'traditional';
+        const changesThisMonth = settings?.changes_this_month || 0;
+        const isEditing = !!settings;
+
+        container.innerHTML = `
+            <div class="activity-settings-form">
+                ${isEditing ? '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">本月已修改 ' + changesThisMonth + ' 次（限3次）</p>' : ''}
+                <div class="form-group">
+                    <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: block;">选择赛道</label>
+                    <div class="track-selector">
+                        <div class="track-option ${track === 'traditional' ? 'active' : ''}" data-track="traditional" onclick="App.selectTrack('traditional')">
+                            <div class="track-option-title">传统赛道</div>
+                            <div class="track-option-desc">每日≥50字</div>
+                        </div>
+                        <div class="track-option ${track === 'ai' ? 'active' : ''}" data-track="ai" onclick="App.selectTrack('ai')">
+                            <div class="track-option-title">AI辅助赛道</div>
+                            <div class="track-option-desc">每日≥500字</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: block;">每日目标字数</label>
+                    <div class="daily-goal-options">
+                        <span class="daily-goal-option ${dailyGoal === 50 ? 'active' : ''}" onclick="App.selectDailyGoal(50)">50</span>
+                        <span class="daily-goal-option ${dailyGoal === 200 ? 'active' : ''}" onclick="App.selectDailyGoal(200)">200</span>
+                        <span class="daily-goal-option ${dailyGoal === 500 ? 'active' : ''}" onclick="App.selectDailyGoal(500)">500</span>
+                        <span class="daily-goal-option ${dailyGoal === 1000 ? 'active' : ''}" onclick="App.selectDailyGoal(1000)">1000</span>
+                        <span class="daily-goal-option ${dailyGoal === 2000 ? 'active' : ''}" onclick="App.selectDailyGoal(2000)">2000</span>
+                        <span class="daily-goal-option ${dailyGoal === 4000 ? 'active' : ''}" onclick="App.selectDailyGoal(4000)">4000</span>
+                    </div>
+                    <div class="daily-goal-custom" style="margin-top: 8px;">
+                        <span style="font-size: 13px;">自定义：</span>
+                        <input type="number" id="customGoalInput" min="50" placeholder="≥50" value="${![50, 200, 500, 1000, 2000, 4000].includes(dailyGoal) ? dailyGoal : ''}">
+                        <button class="btn btn-sm" onclick="App.setCustomGoal()">设置</button>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary btn-sm" onclick="App.saveActivitySettings()">保存设置</button>
+                    ${isEditing ? '<button class="btn btn-secondary btn-sm" onclick="App.cancelEditSettings()">取消</button>' : ''}
+                </div>
+            </div>
+        `;
+    },
+
+    showEditSettingsForm() {
+        this.showActivitySettingsForm(this.activitySettings);
+    },
+
+    cancelEditSettings() {
+        if (this.activitySettings) {
+            this.showActivityStatus(this.activitySettings);
         }
     },
 
@@ -1908,6 +1995,9 @@ const App = {
             return;
         }
 
+        const currentSettings = this.activitySettings || {};
+        const changesThisMonth = (currentSettings.changes_this_month || 0) + 1;
+
         try {
             const { error } = await dbClient
                 .from('user_activity_settings')
@@ -1915,6 +2005,7 @@ const App = {
                     user_id: this.currentUser.id,
                     daily_goal: goal,
                     track: track,
+                    changes_this_month: changesThisMonth,
                     updated_at: new Date().toISOString()
                 }]);
 
@@ -1923,9 +2014,9 @@ const App = {
                 return;
             }
 
-            this.activitySettings = { daily_goal: goal, track };
+            this.activitySettings = { daily_goal: goal, track, changes_this_month: changesThisMonth };
             this.showToast('设置已保存！', 'success');
-            this.loadStreakInfo();
+            this.showActivityStatus(this.activitySettings);
         } catch (err) {
             console.error('Save settings failed:', err);
             this.showToast('保存失败', 'error');
