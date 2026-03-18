@@ -16,6 +16,7 @@
             </div>
             <div class="nav-links">
                 <a href="#" class="nav-link active" data-page="home">首页</a>
+                <a href="#" class="nav-link" data-page="writing-activity">打卡活动</a>
                 <a href="#" class="nav-link" data-page="activities">社团活动</a>
                 <a href="#" class="nav-link" data-page="works">社员作品</a>
                 <a href="#" class="nav-link" data-page="submit">我要投稿</a>
@@ -55,7 +56,11 @@
                             无论你是喜欢玄幻奇幻、都市言情，还是科幻悬疑，这里都有属于你的一方天地。
                         </p>
                         <div class="hero-buttons">
-                            <button class="btn btn-primary" data-goto="activities">
+                            <button class="btn btn-primary" data-goto="writing-activity">
+                                <span class="btn-text">写作打卡活动</span>
+                                <span class="btn-line"></span>
+                            </button>
+                            <button class="btn btn-secondary" data-goto="activities">
                                 <span class="btn-text">查看社团活动</span>
                                 <span class="btn-line"></span>
                             </button>
@@ -104,6 +109,52 @@
                             <h3 class="feature-title">作品展示</h3>
                             <p class="feature-desc">展示你的创作才华，获得读者的认可与反馈</p>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="writing-activity" class="page">
+                <div class="page-header">
+                    <span class="section-dot"></span>
+                    <h2 class="page-title">写作打卡活动</h2>
+                    <span class="section-line"></span>
+                </div>
+                <div class="activity-page-container">
+                    <div class="activity-sidebar">
+                        <div class="activity-settings-card" id="activitySettingsCard">
+                            <h3 class="card-title">我的打卡设置</h3>
+                            <div id="activitySettingsContent"></div>
+                        </div>
+                        <div class="leaderboard-card">
+                            <h3 class="card-title">🏆 排行榜</h3>
+                            <div class="leaderboard-tabs">
+                                <button class="leaderboard-tab active" data-track="traditional">传统赛道</button>
+                                <button class="leaderboard-tab" data-track="ai">AI辅助赛道</button>
+                            </div>
+                            <div class="leaderboard-content" id="leaderboardContent">
+                                <div class="leaderboard-section">
+                                    <h4>字数排行</h4>
+                                    <div id="wordCountRank"></div>
+                                </div>
+                                <div class="leaderboard-section">
+                                    <h4>打卡天数排行</h4>
+                                    <div id="checkinDaysRank"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="activity-main">
+                        <div class="activity-works-header">
+                            <h3 class="card-title">活动作品</h3>
+                            <div class="activity-filter">
+                                <select id="activityTrackFilter" class="form-select">
+                                    <option value="all">全部赛道</option>
+                                    <option value="traditional">传统赛道</option>
+                                    <option value="ai">AI辅助赛道</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="activity-works-grid" id="activityWorksGrid"></div>
                     </div>
                 </div>
             </section>
@@ -239,6 +290,34 @@
                                 </label>
                             </div>
                         </div>
+                        <div class="form-group" id="activityParticipationGroup">
+                            <label class="form-label">
+                                <span class="label-text">参与打卡活动</span>
+                            </label>
+                            <div class="activity-participation-selector">
+                                <label class="activity-participation-option">
+                                    <input type="radio" name="activityParticipation" value="no" checked>
+                                    <span class="activity-participation-content">
+                                        <span class="activity-participation-title">不参与</span>
+                                        <span class="activity-participation-desc">正常投稿</span>
+                                    </span>
+                                </label>
+                                <label class="activity-participation-option">
+                                    <input type="radio" name="activityParticipation" value="traditional">
+                                    <span class="activity-participation-content">
+                                        <span class="activity-participation-title">传统赛道</span>
+                                        <span class="activity-participation-desc">每日≥50字</span>
+                                    </span>
+                                </label>
+                                <label class="activity-participation-option">
+                                    <input type="radio" name="activityParticipation" value="ai">
+                                    <span class="activity-participation-content">
+                                        <span class="activity-participation-title">AI辅助赛道</span>
+                                        <span class="activity-participation-desc">每日≥500字</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
                         <button type="submit" class="btn btn-primary btn-full">
                             <span class="btn-text">提交投稿</span>
                         </button>
@@ -342,6 +421,25 @@
                                     <span id="profileWordCount">0</span> 字
                                 </p>
                             </div>
+                        </div>
+                    </div>
+                    <div class="profile-section" id="checkinCalendarSection" style="display:none;">
+                        <h3 class="section-subtitle">📅 打卡日历</h3>
+                        <div class="checkin-calendar">
+                            <div class="calendar-header">
+                                <button class="calendar-nav-btn" id="calendarPrevMonth">&lt;</button>
+                                <span id="calendarMonthYear"></span>
+                                <button class="calendar-nav-btn" id="calendarNextMonth">&gt;</button>
+                            </div>
+                            <div class="calendar-weekdays">
+                                <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+                            </div>
+                            <div class="calendar-days" id="calendarDays"></div>
+                            <div class="calendar-legend">
+                                <span class="legend-item"><span class="legend-dot success"></span> 打卡成功</span>
+                                <span class="legend-item"><span class="legend-dot pending"></span> 未打卡</span>
+                            </div>
+                            <div class="checkin-stats" id="checkinStats"></div>
                         </div>
                     </div>
                     <div class="profile-section">
