@@ -427,17 +427,22 @@ const App = {
                 const wordCount = work.word_count || 0;
                 const visibilityLabel = work.visibility === 'private' ? '🔒 私密' : '🌐 公开';
                 const visibilityClass = work.visibility === 'private' ? 'private' : 'public';
+                const activityLabel = work.is_activity ? (work.activity_track === 'ai' ? '🤖 AI' : '✍️ 打卡') : '';
                 
                 return `
                     <div class="work-card animate-on-scroll stagger-${(index % 6) + 1}" 
                          onclick="App.showWorkDetail(${work.id})">
                         <span class="work-type-badge ${typeClass}">${typeLabel}</span>
                         <span class="work-visibility-badge ${visibilityClass}">${visibilityLabel}</span>
+                        ${activityLabel ? `<span class="work-activity-badge">${activityLabel}</span>` : ''}
                         <h3 class="work-title">${work.title}</h3>
                         <p class="work-summary">${work.summary || ''}</p>
                         <div class="work-meta">
                             <span class="work-meta-item">📅 ${this.formatDate(work.created_at)}</span>
                             <span class="work-meta-item">📝 ${wordCount} 字</span>
+                        </div>
+                        <div class="work-actions" onclick="event.stopPropagation();">
+                            <button class="btn btn-sm" onclick="App.showWorkActivitySettings(${work.id})">参赛设置</button>
                         </div>
                     </div>
                 `;
@@ -963,13 +968,17 @@ const App = {
                 return;
             }
 
+            const savedWork = data[0];
+            savedWork.is_activity = work.is_activity;
+            savedWork.activity_track = work.activity_track;
+
             form.reset();
             this.resetSubmitForm();
             this.showToast('投稿成功！作品已添加', 'success');
             this.loadWorks();
             this.loadProfile();
             this.navigateTo('profile');
-            this.recordWordCount(data[0], false, 0);
+            this.recordWordCount(savedWork, false, 0);
         } catch (err) {
             console.error('Submit failed:', err);
             this.showToast('投稿失败，请检查网络连接', 'error');
@@ -1039,9 +1048,12 @@ const App = {
         try {
             const { data: oldWork } = await dbClient
                 .from('works')
-                .select('word_count, is_activity')
+                .select('word_count, is_activity, activity_track')
                 .eq('id', this.editingWorkId)
                 .single();
+
+            work.is_activity = oldWork?.is_activity || false;
+            work.activity_track = oldWork?.activity_track || null;
 
             const { error } = await dbClient
                 .from('works')
@@ -2423,7 +2435,7 @@ const App = {
     async updateTodayCheckin(settings, isActivity = false) {
         if (!this.currentUser || !settings) return;
 
-        const dailyGoal = settings.daily_goal;
+        const dailyGoal = settings.daily_goal || 50;
         const today = new Date().toISOString().split('T')[0];
 
         const { data: activityRecords } = await dbClient
@@ -2435,6 +2447,15 @@ const App = {
 
         const activityWords = (activityRecords || []).reduce((sum, r) => sum + (r.added_words || 0), 0);
 
+        const { data: existingCheckin } = await dbClient
+            .from('activity_checkins')
+            .select('*')
+            .eq('user_id', this.currentUser.id)
+            .eq('date', today)
+            .single();
+
+        const alreadyCheckedIn = existingCheckin && existingCheckin.word_count >= dailyGoal;
+
         const { error } = await dbClient
             .from('activity_checkins')
             .upsert([{
@@ -2445,8 +2466,11 @@ const App = {
             }]);
 
         if (!error) {
-            if (activityWords >= dailyGoal) {
+            console.log('打卡检查:', { activityWords, dailyGoal, alreadyCheckedIn });
+            if (activityWords >= dailyGoal && !alreadyCheckedIn) {
                 this.showToast(`🎉 打卡成功！今日已写 ${activityWords} 字`, 'success');
+            } else if (activityWords >= dailyGoal) {
+                this.showToast(`今日已写 ${activityWords} 字，已达标`, 'success');
             } else {
                 this.showToast(`今日已写 ${activityWords} 字，还需 ${dailyGoal - activityWords} 字`, 'success');
             }
@@ -2458,6 +2482,13 @@ const App = {
 
         const today = new Date().toISOString().split('T')[0];
         const addedWords = isUpdate ? Math.max(0, (work.word_count || 0) - oldWordCount) : (work.word_count || 0);
+
+        console.log('recordWordCount:', { 
+            workId: work.id, 
+            wordCount: work.word_count, 
+            isActivity: work.is_activity, 
+            addedWords 
+        });
 
         if (addedWords <= 0) return;
 
@@ -2477,6 +2508,8 @@ const App = {
                 .select('*')
                 .eq('user_id', this.currentUser.id)
                 .single();
+
+            console.log('用户设置:', settings);
 
             if (settings && work.is_activity) {
                 await this.updateTodayCheckin(settings, true);
@@ -2501,6 +2534,123 @@ const App = {
             }
         } catch (err) {
             console.error('Update checkin failed:', err);
+        }
+    },
+
+    async showWorkActivitySettings(workId) {
+        try {
+            const { data: work, error } = await dbClient
+                .from('works')
+                .select('*')
+                .eq('id', workId)
+                .single();
+
+            if (error || !work) {
+                this.showToast('作品不存在', 'error');
+                return;
+            }
+
+            const currentTrack = work.activity_track || 'traditional';
+            const isActivity = work.is_activity || false;
+
+            const modalHtml = `
+                <div class="modal-content activity-settings-modal">
+                    <span class="modal-close" onclick="App.closeActivitySettingsModal()">&times;</span>
+                    <h3 style="margin-bottom:16px;">参赛设置 - ${work.title}</h3>
+                    <div class="form-group">
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:8px;display:block;">是否参与打卡活动</label>
+                        <div class="activity-toggle">
+                            <label class="toggle-option">
+                                <input type="radio" name="activityToggle" value="no" ${!isActivity ? 'checked' : ''}>
+                                <span class="toggle-content">不参与</span>
+                            </label>
+                            <label class="toggle-option">
+                                <input type="radio" name="activityToggle" value="yes" ${isActivity ? 'checked' : ''}>
+                                <span class="toggle-content">参与</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group track-select-group" style="${isActivity ? '' : 'display:none;'}">
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:8px;display:block;">选择赛道</label>
+                        <div class="track-selector">
+                            <div class="track-option ${currentTrack === 'traditional' ? 'active' : ''}" data-track="traditional" onclick="App.selectWorkTrack('traditional')">
+                                <div class="track-option-title">传统赛道</div>
+                                <div class="track-option-desc">每日≥50字</div>
+                            </div>
+                            <div class="track-option ${currentTrack === 'ai' ? 'active' : ''}" data-track="ai" onclick="App.selectWorkTrack('ai')">
+                                <div class="track-option-title">AI辅助赛道</div>
+                                <div class="track-option-desc">每日≥500字</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="App.saveWorkActivitySettings(${workId})" style="margin-top:16px;">保存设置</button>
+                </div>
+            `;
+
+            const modal = document.getElementById('activitySettingsModal');
+            if (!modal) {
+                const newModal = document.createElement('div');
+                newModal.id = 'activitySettingsModal';
+                newModal.className = 'modal show';
+                newModal.innerHTML = modalHtml;
+                document.body.appendChild(newModal);
+            } else {
+                modal.innerHTML = modalHtml;
+                modal.classList.add('show');
+            }
+
+            document.querySelectorAll('input[name="activityToggle"]').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const trackGroup = document.querySelector('.track-select-group');
+                    if (e.target.value === 'yes') {
+                        trackGroup.style.display = 'block';
+                    } else {
+                        trackGroup.style.display = 'none';
+                    }
+                });
+            });
+        } catch (err) {
+            console.error('Show work activity settings failed:', err);
+        }
+    },
+
+    selectWorkTrack(track) {
+        document.querySelectorAll('#activitySettingsModal .track-option').forEach(opt => {
+            opt.classList.toggle('active', opt.dataset.track === track);
+        });
+    },
+
+    closeActivitySettingsModal() {
+        const modal = document.getElementById('activitySettingsModal');
+        if (modal) {
+            modal.classList.remove('show');
+        }
+    },
+
+    async saveWorkActivitySettings(workId) {
+        const isActivity = document.querySelector('input[name="activityToggle"]:checked')?.value === 'yes';
+        const track = document.querySelector('#activitySettingsModal .track-option.active')?.dataset.track || 'traditional';
+
+        try {
+            const { error } = await dbClient
+                .from('works')
+                .update({
+                    is_activity: isActivity,
+                    activity_track: isActivity ? track : null
+                })
+                .eq('id', workId);
+
+            if (error) {
+                this.showToast('保存失败：' + error.message, 'error');
+                return;
+            }
+
+            this.showToast('设置已保存！从下次更新开始计算打卡字数', 'success');
+            this.closeActivitySettingsModal();
+            this.loadMyWorks();
+        } catch (err) {
+            console.error('Save work activity settings failed:', err);
+            this.showToast('保存失败', 'error');
         }
     }
 };
