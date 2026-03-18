@@ -2344,6 +2344,35 @@ body {
      color: var(--text-secondary);
  }
 
+ .today-stats {
+     display: flex;
+     gap: 16px;
+     margin-top: 16px;
+     padding-top: 16px;
+     border-top: 1px solid var(--border-color);
+ }
+
+ .today-stat-item {
+     flex: 1;
+     text-align: center;
+ }
+
+ .today-stat-label {
+     display: block;
+     font-size: 12px;
+     color: var(--text-muted);
+     margin-bottom: 4px;
+ }
+
+ .today-stat-value {
+     font-size: 18px;
+     font-weight: 600;
+ }
+
+ .today-stat-value.activity {
+     color: var(--accent-blue);
+ }
+
 .current-streak-value {
     font-size: 28px;
     font-weight: 700;
