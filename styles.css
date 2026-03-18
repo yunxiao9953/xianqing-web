@@ -364,6 +364,15 @@ body {
     box-shadow: var(--shadow-lg);
 }
 
+.btn-primary .btn-text {
+    color: white;
+}
+
+.btn-primary:hover .btn-text,
+.btn-primary:active .btn-text {
+    color: white;
+}
+
 .btn-secondary {
     background: var(--bg-card);
     color: var(--text-primary);
