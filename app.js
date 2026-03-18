@@ -479,10 +479,16 @@ const App = {
         if (page === 'profile') {
             this.loadProfile();
             this.initProfileTabs();
+            this.loadCheckinCalendar();
+            this.initCalendarNavigation();
         }
 
         if (page === 'admin') {
             this.loadAdminPanel();
+        }
+
+        if (page === 'writing-activity') {
+            this.loadActivityPage();
         }
         
         this.currentPage = page;
@@ -506,10 +512,10 @@ const App = {
 
         const activitiesHtml = (activities.data || []).map(act => `
             <div class="admin-activity-item">
-                <img src="${act.image || ''}" alt="${act.title}" style="width:80px;height:60px;object-fit:cover;border-radius:4px;">
+                ${act.image ? `<img src="${act.image}" alt="${act.title}" style="width:80px;height:60px;object-fit:cover;border-radius:4px;">` : ''}
                 <div style="flex:1;margin-left:10px;">
                     <strong>${act.title}</strong>
-                    <p style="margin:5px 0 0;font-size:12px;color:#666;">${this.formatDate(act.date)}</p>
+                    <p style="margin:5px 0 0;font-size:12px;color:#666;">${act.date_text || act.date || ''}</p>
                 </div>
                 <button class="btn btn-sm btn-danger" onclick="App.deleteActivity(${act.id})">删除</button>
             </div>
@@ -536,7 +542,19 @@ const App = {
                         <input type="text" name="activityDate" class="form-input" placeholder="活动时间，如：2024年1月1日" required>
                     </div>
                     <div class="form-group">
-                        <input type="url" name="activityImage" class="form-input" placeholder="图片链接（可选）">
+                        <label class="form-label"><span class="label-text">活动图片</span></label>
+                        <div class="image-upload-area" id="imageUploadArea">
+                            <div class="image-upload-placeholder" id="imagePlaceholder">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+                                    <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                <p>点击上传或拖放图片到此处</p>
+                                <span>支持 JPG、PNG、GIF 格式</span>
+                            </div>
+                            <img id="imagePreview" style="display:none;max-width:100%;max-height:200px;border-radius:8px;">
+                        </div>
+                        <input type="file" id="imageInput" accept="image/*" style="display:none;">
+                        <input type="hidden" name="activityImage" id="activityImageInput">
                     </div>
                     <div class="form-group">
                         <textarea name="activityDesc" class="form-textarea" placeholder="活动描述（可选）"></textarea>
@@ -551,6 +569,8 @@ const App = {
             </div>
         `;
 
+        this.initImageUpload();
+
         document.getElementById('activityForm').addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleAddActivity(document.getElementById('activityForm'));
@@ -559,12 +579,82 @@ const App = {
         this.initScrollAnimations();
     },
 
+    initImageUpload() {
+        const uploadArea = document.getElementById('imageUploadArea');
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePlaceholder = document.getElementById('imagePlaceholder');
+        const activityImageInput = document.getElementById('activityImageInput');
+
+        if (!uploadArea || !imageInput) return;
+
+        uploadArea.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                this.handleImageFile(files[0]);
+            }
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                this.handleImageFile(e.target.files[0]);
+            }
+        });
+    },
+
+    handleImageFile(file) {
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePlaceholder = document.getElementById('imagePlaceholder');
+        const activityImageInput = document.getElementById('activityImageInput');
+
+        if (!file.type.startsWith('image/')) {
+            this.showToast('请选择图片文件', 'error');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            this.showToast('图片大小不能超过5MB', 'error');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target.result;
+            if (imagePreview) {
+                imagePreview.src = base64;
+                imagePreview.style.display = 'block';
+            }
+            if (imagePlaceholder) {
+                imagePlaceholder.style.display = 'none';
+            }
+            if (activityImageInput) {
+                activityImageInput.value = base64;
+            }
+        };
+        reader.readAsDataURL(file);
+    },
+
     async handleAddActivity(form) {
         const formData = new FormData(form);
         const activity = {
             title: formData.get('activityTitle'),
-            date: formData.get('activityDate'),
-            image: formData.get('activityImage'),
+            date_text: formData.get('activityDate'),
+            image: formData.get('activityImage') || null,
             description: formData.get('activityDesc')
         };
 
@@ -576,6 +666,15 @@ const App = {
         }
 
         form.reset();
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePlaceholder = document.getElementById('imagePlaceholder');
+        if (imagePreview) {
+            imagePreview.style.display = 'none';
+            imagePreview.src = '';
+        }
+        if (imagePlaceholder) {
+            imagePlaceholder.style.display = 'flex';
+        }
         this.showToast('活动添加成功！', 'success');
         this.loadAdminPanel();
     },
@@ -753,6 +852,7 @@ const App = {
         const formData = new FormData(form);
         const workType = formData.get('workType');
         const visibility = formData.get('visibility') || 'public';
+        const activityParticipation = formData.get('activityParticipation') || 'no';
         
         const work = {
             title: formData.get('title'),
@@ -761,7 +861,9 @@ const App = {
             summary: formData.get('summary'),
             work_type: workType,
             visibility: visibility,
-            word_count: 0
+            word_count: 0,
+            is_activity: activityParticipation !== 'no',
+            activity_track: activityParticipation !== 'no' ? activityParticipation : null
         };
 
         if (workType === 'short') {
@@ -821,6 +923,7 @@ const App = {
             this.loadWorks();
             this.loadProfile();
             this.navigateTo('profile');
+            this.checkDailyGoal(data[0]);
         } catch (err) {
             console.error('Submit failed:', err);
             this.showToast('投稿失败，请检查网络连接', 'error');
@@ -1261,11 +1364,11 @@ const App = {
 
             grid.innerHTML = activities.map((activity, index) => `
                 <div class="activity-card animate-on-scroll stagger-${(index % 6) + 1}">
-                    <img src="${activity.image || ''}" alt="${activity.title}" class="activity-image" 
-                         onclick="App.showImageModal('${activity.image || ''}')">
+                    ${activity.image ? `<img src="${activity.image}" alt="${activity.title}" class="activity-image" 
+                         onclick="App.showImageModal('${activity.image}')">` : ''}
                     <div class="activity-content">
                         <h3 class="activity-title">${activity.title}</h3>
-                        <p class="activity-date">${this.formatDate(activity.date)}</p>
+                        <p class="activity-date">${activity.date_text || activity.date || ''}</p>
                         <p class="activity-desc">${activity.description || ''}</p>
                     </div>
                 </div>
@@ -1661,6 +1764,538 @@ const App = {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
+    },
+
+    calendarMonth: new Date().getMonth(),
+    calendarYear: new Date().getFullYear(),
+    activitySettings: null,
+
+    async loadActivityPage() {
+        if (!this.currentUser) {
+            document.getElementById('activitySettingsContent').innerHTML = `
+                <p style="color: var(--text-muted); text-align: center; padding: 20px;">
+                    请先<a href="#" onclick="document.getElementById('loginModal').classList.add('show'); return false;">登录</a>参与打卡活动
+                </p>
+            `;
+        } else {
+            await this.loadActivitySettings();
+        }
+        await this.loadActivityWorks();
+        await this.loadLeaderboard('traditional');
+        this.initActivityPageEvents();
+    },
+
+    initActivityPageEvents() {
+        const leaderboardTabs = document.querySelectorAll('.leaderboard-tab');
+        leaderboardTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                leaderboardTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.loadLeaderboard(tab.dataset.track);
+            });
+        });
+
+        const trackFilter = document.getElementById('activityTrackFilter');
+        if (trackFilter) {
+            trackFilter.addEventListener('change', () => {
+                this.loadActivityWorks(trackFilter.value);
+            });
+        }
+    },
+
+    async loadActivitySettings() {
+        const container = document.getElementById('activitySettingsContent');
+        if (!container) return;
+
+        try {
+            const { data: settings, error } = await dbClient
+                .from('user_activity_settings')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            if (settings) {
+                this.activitySettings = settings;
+            }
+
+            const dailyGoal = settings?.daily_goal || 50;
+            const track = settings?.track || 'traditional';
+
+            container.innerHTML = `
+                <div class="activity-settings-form">
+                    <div class="form-group">
+                        <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: block;">选择赛道</label>
+                        <div class="track-selector">
+                            <div class="track-option ${track === 'traditional' ? 'active' : ''}" data-track="traditional" onclick="App.selectTrack('traditional')">
+                                <div class="track-option-title">传统赛道</div>
+                                <div class="track-option-desc">每日≥50字</div>
+                            </div>
+                            <div class="track-option ${track === 'ai' ? 'active' : ''}" data-track="ai" onclick="App.selectTrack('ai')">
+                                <div class="track-option-title">AI辅助赛道</div>
+                                <div class="track-option-desc">每日≥500字</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: block;">每日目标字数</label>
+                        <div class="daily-goal-options">
+                            <span class="daily-goal-option ${dailyGoal === 50 ? 'active' : ''}" onclick="App.selectDailyGoal(50)">50</span>
+                            <span class="daily-goal-option ${dailyGoal === 200 ? 'active' : ''}" onclick="App.selectDailyGoal(200)">200</span>
+                            <span class="daily-goal-option ${dailyGoal === 500 ? 'active' : ''}" onclick="App.selectDailyGoal(500)">500</span>
+                            <span class="daily-goal-option ${dailyGoal === 1000 ? 'active' : ''}" onclick="App.selectDailyGoal(1000)">1000</span>
+                            <span class="daily-goal-option ${dailyGoal === 2000 ? 'active' : ''}" onclick="App.selectDailyGoal(2000)">2000</span>
+                            <span class="daily-goal-option ${dailyGoal === 4000 ? 'active' : ''}" onclick="App.selectDailyGoal(4000)">4000</span>
+                        </div>
+                        <div class="daily-goal-custom" style="margin-top: 8px;">
+                            <span style="font-size: 13px;">自定义：</span>
+                            <input type="number" id="customGoalInput" min="50" placeholder="≥50" value="${![50, 200, 500, 1000, 2000, 4000].includes(dailyGoal) ? dailyGoal : ''}">
+                            <button class="btn btn-sm" onclick="App.setCustomGoal()">设置</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="App.saveActivitySettings()">保存设置</button>
+                </div>
+                <div class="current-streak" id="currentStreak">
+                    <div class="current-streak-value" id="streakDays">0</div>
+                    <div class="current-streak-label">连续打卡天数</div>
+                </div>
+            `;
+
+            this.loadStreakInfo();
+        } catch (err) {
+            console.error('Load activity settings failed:', err);
+            container.innerHTML = `<p style="color: var(--text-muted); text-align: center;">加载设置失败</p>`;
+        }
+    },
+
+    selectTrack(track) {
+        document.querySelectorAll('.track-option').forEach(opt => {
+            opt.classList.toggle('active', opt.dataset.track === track);
+        });
+    },
+
+    selectDailyGoal(goal) {
+        document.querySelectorAll('.daily-goal-option').forEach(opt => {
+            opt.classList.toggle('active', parseInt(opt.textContent) === goal);
+        });
+        const customInput = document.getElementById('customGoalInput');
+        if (customInput) customInput.value = '';
+    },
+
+    setCustomGoal() {
+        const input = document.getElementById('customGoalInput');
+        const goal = parseInt(input.value);
+        if (goal < 50) {
+            this.showToast('每日目标不能低于50字', 'error');
+            return;
+        }
+        document.querySelectorAll('.daily-goal-option').forEach(opt => {
+            opt.classList.remove('active');
+        });
+        this.showToast(`已设置每日目标：${goal}字`, 'success');
+    },
+
+    async saveActivitySettings() {
+        const track = document.querySelector('.track-option.active')?.dataset.track || 'traditional';
+        let goal = parseInt(document.querySelector('.daily-goal-option.active')?.textContent);
+        
+        if (!goal) {
+            const customInput = document.getElementById('customGoalInput');
+            goal = parseInt(customInput?.value) || 50;
+        }
+
+        if (goal < 50) {
+            this.showToast('每日目标不能低于50字', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await dbClient
+                .from('user_activity_settings')
+                .upsert([{
+                    user_id: this.currentUser.id,
+                    daily_goal: goal,
+                    track: track,
+                    updated_at: new Date().toISOString()
+                }]);
+
+            if (error) {
+                this.showToast('保存失败：' + error.message, 'error');
+                return;
+            }
+
+            this.activitySettings = { daily_goal: goal, track };
+            this.showToast('设置已保存！', 'success');
+            this.loadStreakInfo();
+        } catch (err) {
+            console.error('Save settings failed:', err);
+            this.showToast('保存失败', 'error');
+        }
+    },
+
+    async loadStreakInfo() {
+        if (!this.currentUser) return;
+
+        try {
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today);
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+
+            const { data: checkins, error } = await dbClient
+                .from('activity_checkins')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+                .order('date', { ascending: false });
+
+            if (error) {
+                console.error('Load checkins failed:', error);
+                return;
+            }
+
+            let streak = 0;
+            const checkinDates = (checkins || []).map(c => c.date);
+            const todayStr = today.toISOString().split('T')[0];
+            
+            let checkDate = new Date(today);
+            while (true) {
+                const dateStr = checkDate.toISOString().split('T')[0];
+                if (checkinDates.includes(dateStr)) {
+                    streak++;
+                    checkDate.setDate(checkDate.getDate() - 1);
+                } else if (dateStr === todayStr) {
+                    checkDate.setDate(checkDate.getDate() - 1);
+                } else {
+                    break;
+                }
+            }
+
+            const streakEl = document.getElementById('streakDays');
+            if (streakEl) streakEl.textContent = streak;
+        } catch (err) {
+            console.error('Load streak failed:', err);
+        }
+    },
+
+    async loadActivityWorks(filter = 'all') {
+        const grid = document.getElementById('activityWorksGrid');
+        if (!grid) return;
+
+        try {
+            let query = dbClient
+                .from('works')
+                .select('*')
+                .eq('is_activity', true)
+                .order('created_at', { ascending: false });
+
+            if (filter !== 'all') {
+                query = query.eq('activity_track', filter);
+            }
+
+            const { data: works, error } = await query;
+
+            if (error || !works || works.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✍️</div>
+                        <p class="empty-state-text">暂无活动作品，快来投稿参与打卡吧！</p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = works.map((work, index) => {
+                const isPrivate = work.visibility === 'private';
+                const isOwner = this.currentUser && work.author_id === this.currentUser.id;
+                const canView = !isPrivate || isOwner || this.isAdmin;
+                const trackLabel = work.activity_track === 'ai' ? 'AI辅助' : '传统';
+                const trackClass = work.activity_track === 'ai' ? 'ai' : 'traditional';
+
+                if (isPrivate && !canView) {
+                    return `
+                        <div class="activity-work-card private animate-on-scroll stagger-${(index % 6) + 1}">
+                            <span class="activity-work-track ${trackClass}">${trackLabel}</span>
+                            <div class="activity-work-title">🔒 私密作品</div>
+                            <div class="activity-work-author">作者：${work.author}</div>
+                            <div class="activity-work-meta">
+                                <span>📝 ${work.word_count || 0} 字</span>
+                                ${work.work_type === 'chaptered' && work.chapters ? `<span>📖 ${work.chapters.length} 章</span>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="activity-work-card animate-on-scroll stagger-${(index % 6) + 1}" 
+                         onclick="App.showWorkDetail(${work.id})">
+                        <span class="activity-work-track ${trackClass}">${trackLabel}</span>
+                        <div class="activity-work-title">${work.title}</div>
+                        <div class="activity-work-author">作者：${work.author}</div>
+                        <div class="activity-work-meta">
+                            <span>📝 ${work.word_count || 0} 字</span>
+                            ${work.work_type === 'chaptered' && work.chapters ? `<span>📖 ${work.chapters.length} 章</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            this.initScrollAnimations();
+        } catch (err) {
+            console.error('Load activity works failed:', err);
+            grid.innerHTML = `<div class="empty-state"><p class="empty-state-text">加载失败</p></div>`;
+        }
+    },
+
+    async loadLeaderboard(track = 'traditional') {
+        try {
+            const { data: settings, error } = await dbClient
+                .from('user_activity_settings')
+                .select('user_id, track')
+                .eq('track', track);
+
+            if (!settings || settings.length === 0) {
+                document.getElementById('wordCountRank').innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">暂无数据</p>';
+                document.getElementById('checkinDaysRank').innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">暂无数据</p>';
+                return;
+            }
+
+            const userIds = settings.map(s => s.user_id);
+
+            const { data: users } = await dbClient
+                .from('users')
+                .select('id, username, display_name')
+                .in('id', userIds);
+
+            const userMap = {};
+            (users || []).forEach(u => userMap[u.id] = u.display_name || u.username);
+
+            const { data: works } = await dbClient
+                .from('works')
+                .select('author_id, word_count, activity_track')
+                .eq('activity_track', track)
+                .in('author_id', userIds);
+
+            const wordCountMap = {};
+            (works || []).forEach(w => {
+                wordCountMap[w.author_id] = (wordCountMap[w.author_id] || 0) + (w.word_count || 0);
+            });
+
+            const wordCountRank = Object.entries(wordCountMap)
+                .map(([id, count]) => ({ id, name: userMap[id] || '未知', count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 5);
+
+            const { data: checkins } = await dbClient
+                .from('activity_checkins')
+                .select('user_id, date')
+                .eq('is_ai', track === 'ai')
+                .in('user_id', userIds);
+
+            const checkinDaysMap = {};
+            (checkins || []).forEach(c => {
+                checkinDaysMap[c.user_id] = (checkinDaysMap[c.user_id] || 0) + 1;
+            });
+
+            const checkinDaysRank = Object.entries(checkinDaysMap)
+                .map(([id, days]) => ({ id, name: userMap[id] || '未知', days }))
+                .sort((a, b) => b.days - a.days)
+                .slice(0, 5);
+
+            document.getElementById('wordCountRank').innerHTML = wordCountRank.length > 0
+                ? wordCountRank.map((item, i) => `
+                    <div class="leaderboard-item">
+                        <span class="leaderboard-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</span>
+                        <span class="leaderboard-name">${item.name}</span>
+                        <span class="leaderboard-value">${item.count} 字</span>
+                    </div>
+                `).join('')
+                : '<p style="color: var(--text-muted); font-size: 12px;">暂无数据</p>';
+
+            document.getElementById('checkinDaysRank').innerHTML = checkinDaysRank.length > 0
+                ? checkinDaysRank.map((item, i) => `
+                    <div class="leaderboard-item">
+                        <span class="leaderboard-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</span>
+                        <span class="leaderboard-name">${item.name}</span>
+                        <span class="leaderboard-value">${item.days} 天</span>
+                    </div>
+                `).join('')
+                : '<p style="color: var(--text-muted); font-size: 12px;">暂无数据</p>';
+        } catch (err) {
+            console.error('Load leaderboard failed:', err);
+        }
+    },
+
+    async loadCheckinCalendar() {
+        const calendarSection = document.getElementById('checkinCalendarSection');
+        if (!calendarSection || !this.currentUser) return;
+
+        calendarSection.style.display = 'block';
+
+        const monthYearEl = document.getElementById('calendarMonthYear');
+        const daysEl = document.getElementById('calendarDays');
+
+        const year = this.calendarYear;
+        const month = this.calendarMonth;
+
+        monthYearEl.textContent = `${year}年${month + 1}月`;
+
+        try {
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const firstDayStr = firstDay.toISOString().split('T')[0];
+            const lastDayStr = lastDay.toISOString().split('T')[0];
+
+            const { data: checkins, error } = await dbClient
+                .from('activity_checkins')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .gte('date', firstDayStr)
+                .lte('date', lastDayStr);
+
+            const checkinMap = {};
+            (checkins || []).forEach(c => {
+                checkinMap[c.date] = c.word_count;
+            });
+
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+
+            let html = '';
+            const startDay = firstDay.getDay();
+            const totalDays = lastDay.getDate();
+
+            const prevMonthLastDay = new Date(year, month, 0).getDate();
+            for (let i = startDay - 1; i >= 0; i--) {
+                html += `<div class="calendar-day other-month">${prevMonthLastDay - i}</div>`;
+            }
+
+            for (let day = 1; day <= totalDays; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isChecked = checkinMap[dateStr] !== undefined;
+                const isToday = dateStr === todayStr;
+                const wordCount = checkinMap[dateStr] || 0;
+
+                html += `
+                    <div class="calendar-day ${isChecked ? 'checked' : ''} ${isToday ? 'today' : ''}">
+                        ${day}
+                        ${isChecked ? `<span class="word-count">${wordCount}字</span>` : ''}
+                    </div>
+                `;
+            }
+
+            const endDay = lastDay.getDay();
+            for (let i = 1; i < 7 - endDay; i++) {
+                html += `<div class="calendar-day other-month">${i}</div>`;
+            }
+
+            daysEl.innerHTML = html;
+
+            this.loadCheckinStats();
+        } catch (err) {
+            console.error('Load calendar failed:', err);
+        }
+    },
+
+    async loadCheckinStats() {
+        const statsEl = document.getElementById('checkinStats');
+        if (!statsEl || !this.currentUser) return;
+
+        try {
+            const today = new Date();
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+            const { data: monthCheckins } = await dbClient
+                .from('activity_checkins')
+                .select('word_count')
+                .eq('user_id', this.currentUser.id)
+                .gte('date', monthStart.toISOString().split('T')[0]);
+
+            const totalDays = (monthCheckins || []).length;
+            const totalWords = (monthCheckins || []).reduce((sum, c) => sum + (c.word_count || 0), 0);
+
+            statsEl.innerHTML = `
+                <div class="checkin-stat">
+                    <div class="checkin-stat-value">${totalDays}</div>
+                    <div class="checkin-stat-label">本月打卡</div>
+                </div>
+                <div class="checkin-stat">
+                    <div class="checkin-stat-value">${totalWords}</div>
+                    <div class="checkin-stat-label">本月字数</div>
+                </div>
+            `;
+        } catch (err) {
+            console.error('Load stats failed:', err);
+        }
+    },
+
+    initCalendarNavigation() {
+        const prevBtn = document.getElementById('calendarPrevMonth');
+        const nextBtn = document.getElementById('calendarNextMonth');
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                this.calendarMonth--;
+                if (this.calendarMonth < 0) {
+                    this.calendarMonth = 11;
+                    this.calendarYear--;
+                }
+                this.loadCheckinCalendar();
+            });
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                this.calendarMonth++;
+                if (this.calendarMonth > 11) {
+                    this.calendarMonth = 0;
+                    this.calendarYear++;
+                }
+                this.loadCheckinCalendar();
+            });
+        }
+    },
+
+    async checkDailyGoal(work) {
+        if (!work.is_activity || !this.currentUser) return;
+
+        try {
+            const { data: settings } = await dbClient
+                .from('user_activity_settings')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            if (!settings) return;
+
+            const dailyGoal = settings.daily_goal;
+            const today = new Date().toISOString().split('T')[0];
+
+            const { data: todayWorks } = await dbClient
+                .from('works')
+                .select('word_count')
+                .eq('author_id', this.currentUser.id)
+                .eq('is_activity', true)
+                .gte('created_at', today + 'T00:00:00')
+                .lte('created_at', today + 'T23:59:59');
+
+            const todayWords = (todayWorks || []).reduce((sum, w) => sum + (w.word_count || 0), 0);
+
+            if (todayWords >= dailyGoal) {
+                const { error } = await dbClient
+                    .from('activity_checkins')
+                    .upsert([{
+                        user_id: this.currentUser.id,
+                        date: today,
+                        word_count: todayWords,
+                        is_ai: settings.track === 'ai'
+                    }]);
+
+                if (!error) {
+                    this.showToast(`🎉 打卡成功！今日已写 ${todayWords} 字`, 'success');
+                }
+            }
+        } catch (err) {
+            console.error('Check daily goal failed:', err);
+        }
     }
 };
 
