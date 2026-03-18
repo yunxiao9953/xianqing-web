@@ -7,6 +7,7 @@ const App = {
     currentUser: null,
     profileTab: 'all',
     editingWorkId: null,
+    isAdmin: false,
     
     init() {
         this.checkSession();
@@ -73,12 +74,21 @@ const App = {
         if (savedUser) {
             try {
                 this.currentUser = JSON.parse(savedUser);
+                this.checkAdminStatus();
                 this.updateAuthUI();
             } catch (e) {
                 this.currentUser = null;
                 localStorage.removeItem('xianqing_user');
             }
         }
+    },
+
+    async checkAdminStatus() {
+        if (!this.currentUser) {
+            this.isAdmin = false;
+            return;
+        }
+        this.isAdmin = this.currentUser.username === 'admin';
     },
 
     toggleAuthMode() {
@@ -178,6 +188,7 @@ const App = {
                     username: username,
                     displayName: username
                 };
+                this.isAdmin = username === 'admin';
                 
                 localStorage.setItem('xianqing_user', JSON.stringify(this.currentUser));
                 
@@ -220,6 +231,7 @@ const App = {
                 username: user.username,
                 displayName: user.display_name || user.username
             };
+            this.isAdmin = user.username === 'admin';
             
             localStorage.setItem('xianqing_user', JSON.stringify(this.currentUser));
             
@@ -236,6 +248,7 @@ const App = {
 
     logout() {
         this.currentUser = null;
+        this.isAdmin = false;
         localStorage.removeItem('xianqing_user');
         this.updateAuthUI();
         this.navigateTo('home');
@@ -263,6 +276,7 @@ const App = {
         const userAvatar = document.getElementById('userAvatar');
         const userNameEl = document.getElementById('userName');
         const profileLink = document.getElementById('profileLink');
+        const adminLink = document.getElementById('adminLink');
         
         if (this.currentUser) {
             if (loginBtn) loginBtn.style.display = 'none';
@@ -270,12 +284,14 @@ const App = {
             if (userAvatar) userAvatar.textContent = this.currentUser.username.charAt(0).toUpperCase();
             if (userNameEl) userNameEl.textContent = this.currentUser.username;
             if (profileLink) profileLink.style.display = 'inline-block';
+            if (adminLink) adminLink.style.display = this.isAdmin ? 'inline-block' : 'none';
             
             this.loadProfile();
         } else {
             if (loginBtn) loginBtn.style.display = 'block';
             if (userInfo) userInfo.style.display = 'none';
             if (profileLink) profileLink.style.display = 'none';
+            if (adminLink) adminLink.style.display = 'none';
         }
         
         this.loadActivities();
@@ -420,6 +436,11 @@ const App = {
                     document.getElementById('loginModal').classList.add('show');
                     return;
                 }
+
+                if (page === 'admin' && !this.isAdmin) {
+                    this.showToast('只有管理员可以访问', 'error');
+                    return;
+                }
                 
                 this.navigateTo(page);
                 navLinksContainer.classList.remove('show');
@@ -459,9 +480,133 @@ const App = {
             this.loadProfile();
             this.initProfileTabs();
         }
+
+        if (page === 'admin') {
+            this.loadAdminPanel();
+        }
         
         this.currentPage = page;
         window.scrollTo(0, 0);
+    },
+
+    async loadAdminPanel() {
+        const adminPanel = document.getElementById('adminPanel');
+        if (!adminPanel) return;
+
+        const allWorks = await dbClient
+            .from('works')
+            .select('*')
+            .eq('visibility', 'public')
+            .order('created_at', { ascending: false });
+
+        const activities = await dbClient
+            .from('activities')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        const activitiesHtml = (activities.data || []).map(act => `
+            <div class="admin-activity-item">
+                <img src="${act.image || ''}" alt="${act.title}" style="width:80px;height:60px;object-fit:cover;border-radius:4px;">
+                <div style="flex:1;margin-left:10px;">
+                    <strong>${act.title}</strong>
+                    <p style="margin:5px 0 0;font-size:12px;color:#666;">${this.formatDate(act.date)}</p>
+                </div>
+                <button class="btn btn-sm btn-danger" onclick="App.deleteActivity(${act.id})">删除</button>
+            </div>
+        `).join('') || '<p>暂无活动</p>';
+
+        const worksHtml = (allWorks.data || []).map(work => `
+            <div class="admin-work-item">
+                <div style="flex:1;">
+                    <strong>${work.title}</strong>
+                    <p style="margin:5px 0 0;font-size:12px;color:#666;">作者：${work.author}</p>
+                </div>
+                <button class="btn btn-sm" onclick="App.adminToggleVisibility(${work.id})">设为私密</button>
+            </div>
+        `).join('') || '<p>暂无公开作品</p>';
+
+        adminPanel.innerHTML = `
+            <div class="admin-section">
+                <h3 class="section-subtitle">管理社团活动</h3>
+                <form id="activityForm" class="admin-form" style="margin-bottom:20px;">
+                    <div class="form-group">
+                        <input type="text" name="activityTitle" class="form-input" placeholder="活动标题" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="text" name="activityDate" class="form-input" placeholder="活动时间，如：2024年1月1日" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="url" name="activityImage" class="form-input" placeholder="图片链接（可选）">
+                    </div>
+                    <div class="form-group">
+                        <textarea name="activityDesc" class="form-textarea" placeholder="活动描述（可选）"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">添加活动</button>
+                </form>
+                <div class="admin-list">${activitiesHtml}</div>
+            </div>
+            <div class="admin-section">
+                <h3 class="section-subtitle">管理公开作品（设为私密）</h3>
+                <div class="admin-list">${worksHtml}</div>
+            </div>
+        `;
+
+        document.getElementById('activityForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleAddActivity(document.getElementById('activityForm'));
+        });
+
+        this.initScrollAnimations();
+    },
+
+    async handleAddActivity(form) {
+        const formData = new FormData(form);
+        const activity = {
+            title: formData.get('activityTitle'),
+            date: formData.get('activityDate'),
+            image: formData.get('activityImage'),
+            description: formData.get('activityDesc')
+        };
+
+        const { error } = await dbClient.from('activities').insert([activity]);
+        
+        if (error) {
+            this.showToast('添加失败：' + error.message, 'error');
+            return;
+        }
+
+        form.reset();
+        this.showToast('活动添加成功！', 'success');
+        this.loadAdminPanel();
+    },
+
+    async deleteActivity(activityId) {
+        if (!confirm('确定要删除这个活动吗？')) return;
+
+        const { error } = await dbClient.from('activities').delete().eq('id', activityId);
+        
+        if (error) {
+            this.showToast('删除失败', 'error');
+            return;
+        }
+
+        this.showToast('活动已删除', 'success');
+        this.loadAdminPanel();
+    },
+
+    async adminToggleVisibility(workId) {
+        const { error } = await dbClient
+            .from('works')
+            .update({ visibility: 'private' })
+            .eq('id', workId);
+
+        if (error) {
+            this.showToast('操作失败', 'error');
+            return;
+        }
+
+        this.showToast('已将作品设为私密', 'success');
+        this.loadAdminPanel();
     },
 
     initWorkTypeSelector() {
@@ -924,6 +1069,14 @@ const App = {
             reason: formData.get('reason')
         };
 
+        if (!this.currentUser) {
+            this.showToast('请先登录', 'error');
+            document.getElementById('loginModal').classList.add('show');
+            return;
+        }
+
+        recommendation.user_id = this.currentUser.id;
+
         try {
             const { data, error } = await dbClient
                 .from('recommendations')
@@ -1192,7 +1345,7 @@ const App = {
             
             const isOwner = this.isOwner(work);
             
-            if (work.visibility === 'private' && !isOwner) {
+            if (work.visibility === 'private' && !isOwner && !this.isAdmin) {
                 this.showToast('该作品为私密作品', 'error');
                 return;
             }
@@ -1447,26 +1600,47 @@ const App = {
                 return;
             }
 
-            grid.innerHTML = recommendations.map((rec, index) => `
-                <div class="recommend-card animate-on-scroll stagger-${(index % 6) + 1}">
-                    <div class="recommend-header">
-                        <h3 class="recommend-book-name">${rec.book_name}</h3>
-                        <div class="recommend-rating">${'★'.repeat(rec.rating)}${'☆'.repeat(5 - rec.rating)}</div>
+            grid.innerHTML = recommendations.map((rec, index) => {
+                const canDelete = this.currentUser && (rec.user_id === this.currentUser.id || this.isAdmin);
+                return `
+                    <div class="recommend-card animate-on-scroll stagger-${(index % 6) + 1}">
+                        <div class="recommend-header">
+                            <h3 class="recommend-book-name">${rec.book_name}</h3>
+                            <div class="recommend-rating">${'★'.repeat(rec.rating)}${'☆'.repeat(5 - rec.rating)}</div>
+                        </div>
+                        <div class="recommend-meta">
+                            <span class="recommend-type">${rec.book_type || ''}</span>
+                            <span class="recommend-author">推荐人：${rec.recommender}</span>
+                        </div>
+                        ${rec.reason ? `<p class="recommend-reason">${rec.reason}</p>` : ''}
+                        <p class="recommend-time">${this.formatDate(rec.created_at)}</p>
+                        ${canDelete ? `<button class="btn btn-sm btn-danger" style="margin-top:10px;" onclick="App.deleteRecommendation(${rec.id})">删除</button>` : ''}
                     </div>
-                    <div class="recommend-meta">
-                        <span class="recommend-type">${rec.book_type || ''}</span>
-                        <span class="recommend-author">推荐人：${rec.recommender}</span>
-                    </div>
-                    ${rec.reason ? `<p class="recommend-reason">${rec.reason}</p>` : ''}
-                    <p class="recommend-time">${this.formatDate(rec.created_at)}</p>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             this.initScrollAnimations();
         } catch (err) {
             console.error('Load recommendations failed:', err);
             grid.innerHTML = `<div class="empty-state"><p class="empty-state-text">加载失败</p></div>`;
         }
+    },
+
+    async deleteRecommendation(recId) {
+        if (!confirm('确定要删除这条推荐吗？')) return;
+
+        const { error } = await dbClient
+            .from('recommendations')
+            .delete()
+            .eq('id', recId);
+
+        if (error) {
+            this.showToast('删除失败', 'error');
+            return;
+        }
+
+        this.showToast('推荐已删除', 'success');
+        this.loadRecommendations();
     },
 
     formatDate(dateString) {
