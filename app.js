@@ -2159,6 +2159,9 @@ const App = {
         const grid = document.getElementById('activityWorksGrid');
         if (!grid) return;
 
+        if (this._loadingActivityWorks) return;
+        this._loadingActivityWorks = true;
+
         try {
             let query = dbClient
                 .from('works')
@@ -2179,6 +2182,7 @@ const App = {
                         <p class="empty-state-text">暂无活动作品，快来投稿参与打卡吧！</p>
                     </div>
                 `;
+                this._loadingActivityWorks = false;
                 return;
             }
 
@@ -2218,9 +2222,11 @@ const App = {
             }).join('');
 
             this.initScrollAnimations();
+            this._loadingActivityWorks = false;
         } catch (err) {
             console.error('Load activity works failed:', err);
             grid.innerHTML = `<div class="empty-state"><p class="empty-state-text">加载失败</p></div>`;
+            this._loadingActivityWorks = false;
         }
     },
 
@@ -2265,17 +2271,35 @@ const App = {
 
             const { data: checkins } = await dbClient
                 .from('activity_checkins')
-                .select('user_id, date')
+                .select('user_id, date, word_count')
                 .eq('is_ai', track === 'ai')
                 .in('user_id', userIds);
 
+            const { data: allSettings } = await dbClient
+                .from('user_activity_settings')
+                .select('user_id, daily_goal')
+                .in('user_id', userIds);
+
+            const goalMap = {};
+            (allSettings || []).forEach(s => {
+                goalMap[s.user_id] = s.daily_goal || 50;
+            });
+
             const checkinDaysMap = {};
             (checkins || []).forEach(c => {
-                checkinDaysMap[c.user_id] = (checkinDaysMap[c.user_id] || 0) + 1;
+                const goal = goalMap[c.user_id] || 50;
+                if ((c.word_count || 0) >= goal) {
+                    const key = `${c.user_id}_${c.date}`;
+                    if (!checkinDaysMap[key]) {
+                        checkinDaysMap[key] = true;
+                        checkinDaysMap[c.user_id] = (checkinDaysMap[c.user_id] || 0) + 1;
+                    }
+                }
             });
 
             const checkinDaysRank = Object.entries(checkinDaysMap)
-                .map(([id, days]) => ({ id, name: userMap[id] || '未知', days }))
+                .filter(([key]) => !key.includes('_'))
+                .map(([id, days]) => ({ id: parseInt(id), name: userMap[id] || '未知', days }))
                 .sort((a, b) => b.days - a.days)
                 .slice(0, 5);
 
@@ -2323,6 +2347,14 @@ const App = {
             const firstDayStr = firstDay.toISOString().split('T')[0];
             const lastDayStr = lastDay.toISOString().split('T')[0];
 
+            const { data: settings } = await dbClient
+                .from('user_activity_settings')
+                .select('daily_goal')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            const dailyGoal = settings?.daily_goal || 50;
+
             const { data: checkins, error } = await dbClient
                 .from('activity_checkins')
                 .select('*')
@@ -2332,7 +2364,10 @@ const App = {
 
             const checkinMap = {};
             (checkins || []).forEach(c => {
-                checkinMap[c.date] = c.word_count;
+                checkinMap[c.date] = {
+                    wordCount: c.word_count,
+                    checked: (c.word_count || 0) >= dailyGoal
+                };
             });
 
             const today = new Date();
@@ -2349,14 +2384,15 @@ const App = {
 
             for (let day = 1; day <= totalDays; day++) {
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const isChecked = checkinMap[dateStr] !== undefined;
+                const checkinData = checkinMap[dateStr];
+                const isChecked = checkinData?.checked || false;
                 const isToday = dateStr === todayStr;
-                const wordCount = checkinMap[dateStr] || 0;
+                const wordCount = checkinData?.wordCount || 0;
 
                 html += `
                     <div class="calendar-day ${isChecked ? 'checked' : ''} ${isToday ? 'today' : ''}">
                         ${day}
-                        ${isChecked ? `<span class="word-count">${wordCount}字</span>` : ''}
+                        ${checkinData ? `<span class="word-count">${wordCount}字</span>` : ''}
                     </div>
                 `;
             }
@@ -2382,18 +2418,32 @@ const App = {
             const today = new Date();
             const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
+            const { data: settings } = await dbClient
+                .from('user_activity_settings')
+                .select('daily_goal')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            const dailyGoal = settings?.daily_goal || 50;
+
             const { data: monthCheckins } = await dbClient
                 .from('activity_checkins')
-                .select('word_count')
+                .select('date, word_count')
                 .eq('user_id', this.currentUser.id)
                 .gte('date', monthStart.toISOString().split('T')[0]);
 
-            const totalDays = (monthCheckins || []).length;
-            const totalWords = (monthCheckins || []).reduce((sum, c) => sum + (c.word_count || 0), 0);
+            const validDays = new Set();
+            let totalWords = 0;
+            (monthCheckins || []).forEach(c => {
+                totalWords += c.word_count || 0;
+                if ((c.word_count || 0) >= dailyGoal) {
+                    validDays.add(c.date);
+                }
+            });
 
             statsEl.innerHTML = `
                 <div class="checkin-stat">
-                    <div class="checkin-stat-value">${totalDays}</div>
+                    <div class="checkin-stat-value">${validDays.size}</div>
                     <div class="checkin-stat-label">本月打卡</div>
                 </div>
                 <div class="checkin-stat">
