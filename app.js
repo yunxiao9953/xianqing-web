@@ -333,10 +333,56 @@ const App = {
             
             if (profileWorkCount) profileWorkCount.textContent = worksList.length;
             if (profileWordCount) profileWordCount.textContent = totalWords;
+
+            await this.loadTodayWordStats();
             
             this.loadMyWorks();
         } catch (err) {
             console.error('Load profile failed:', err);
+        }
+    },
+
+    async loadTodayWordStats() {
+        const today = new Date().toISOString().split('T')[0];
+
+        try {
+            const { data: allRecords } = await dbClient
+                .from('word_records')
+                .select('added_words, is_activity')
+                .eq('user_id', this.currentUser.id)
+                .eq('date', today);
+
+            const records = allRecords || [];
+            const totalToday = records.reduce((sum, r) => sum + (r.added_words || 0), 0);
+            const activityToday = records.filter(r => r.is_activity).reduce((sum, r) => sum + (r.added_words || 0), 0);
+
+            let statsHtml = `
+                <div class="today-stats">
+                    <div class="today-stat-item">
+                        <span class="today-stat-label">今日总字数</span>
+                        <span class="today-stat-value">${totalToday}</span>
+                    </div>
+                    <div class="today-stat-item">
+                        <span class="today-stat-label">打卡字数</span>
+                        <span class="today-stat-value activity">${activityToday}</span>
+                    </div>
+                </div>
+            `;
+
+            let statsContainer = document.getElementById('todayWordStats');
+            if (!statsContainer) {
+                const profileCard = document.querySelector('.profile-card');
+                if (profileCard) {
+                    const statsDiv = document.createElement('div');
+                    statsDiv.id = 'todayWordStats';
+                    statsDiv.innerHTML = statsHtml;
+                    profileCard.appendChild(statsDiv);
+                }
+            } else {
+                statsContainer.innerHTML = statsHtml;
+            }
+        } catch (err) {
+            console.error('Load today stats failed:', err);
         }
     },
 
@@ -923,7 +969,7 @@ const App = {
             this.loadWorks();
             this.loadProfile();
             this.navigateTo('profile');
-            this.checkDailyGoal(data[0]);
+            this.recordWordCount(data[0], false, 0);
         } catch (err) {
             console.error('Submit failed:', err);
             this.showToast('投稿失败，请检查网络连接', 'error');
@@ -991,6 +1037,12 @@ const App = {
         }
 
         try {
+            const { data: oldWork } = await dbClient
+                .from('works')
+                .select('word_count, is_activity')
+                .eq('id', this.editingWorkId)
+                .single();
+
             const { error } = await dbClient
                 .from('works')
                 .update(work)
@@ -1000,6 +1052,11 @@ const App = {
                 console.error('Update error:', error);
                 this.showToast('更新失败：' + error.message, 'error');
                 return;
+            }
+
+            if (work.word_count > (oldWork?.word_count || 0)) {
+                work.id = this.editingWorkId;
+                await this.recordWordCount(work, true, oldWork?.word_count || 0);
             }
 
             form.reset();
@@ -2346,7 +2403,7 @@ const App = {
     },
 
     async checkDailyGoal(work) {
-        if (!work.is_activity || !this.currentUser) return;
+        if (!this.currentUser) return;
 
         try {
             const { data: settings } = await dbClient
@@ -2357,35 +2414,93 @@ const App = {
 
             if (!settings) return;
 
-            const dailyGoal = settings.daily_goal;
-            const today = new Date().toISOString().split('T')[0];
-
-            const { data: todayWorks } = await dbClient
-                .from('works')
-                .select('word_count')
-                .eq('author_id', this.currentUser.id)
-                .eq('is_activity', true)
-                .gte('created_at', today + 'T00:00:00')
-                .lte('created_at', today + 'T23:59:59');
-
-            const todayWords = (todayWorks || []).reduce((sum, w) => sum + (w.word_count || 0), 0);
-
-            if (todayWords >= dailyGoal) {
-                const { error } = await dbClient
-                    .from('activity_checkins')
-                    .upsert([{
-                        user_id: this.currentUser.id,
-                        date: today,
-                        word_count: todayWords,
-                        is_ai: settings.track === 'ai'
-                    }]);
-
-                if (!error) {
-                    this.showToast(`🎉 打卡成功！今日已写 ${todayWords} 字`, 'success');
-                }
-            }
+            await this.updateTodayCheckin(settings, work.is_activity);
         } catch (err) {
             console.error('Check daily goal failed:', err);
+        }
+    },
+
+    async updateTodayCheckin(settings, isActivity = false) {
+        if (!this.currentUser || !settings) return;
+
+        const dailyGoal = settings.daily_goal;
+        const today = new Date().toISOString().split('T')[0];
+
+        const { data: activityRecords } = await dbClient
+            .from('word_records')
+            .select('added_words')
+            .eq('user_id', this.currentUser.id)
+            .eq('is_activity', true)
+            .eq('date', today);
+
+        const activityWords = (activityRecords || []).reduce((sum, r) => sum + (r.added_words || 0), 0);
+
+        const { error } = await dbClient
+            .from('activity_checkins')
+            .upsert([{
+                user_id: this.currentUser.id,
+                date: today,
+                word_count: activityWords,
+                is_ai: settings.track === 'ai'
+            }]);
+
+        if (!error) {
+            if (activityWords >= dailyGoal) {
+                this.showToast(`🎉 打卡成功！今日已写 ${activityWords} 字`, 'success');
+            } else {
+                this.showToast(`今日已写 ${activityWords} 字，还需 ${dailyGoal - activityWords} 字`, 'success');
+            }
+        }
+    },
+
+    async recordWordCount(work, isUpdate = false, oldWordCount = 0) {
+        if (!this.currentUser) return;
+
+        const today = new Date().toISOString().split('T')[0];
+        const addedWords = isUpdate ? Math.max(0, (work.word_count || 0) - oldWordCount) : (work.word_count || 0);
+
+        if (addedWords <= 0) return;
+
+        try {
+            await dbClient
+                .from('word_records')
+                .insert([{
+                    user_id: this.currentUser.id,
+                    date: today,
+                    work_id: work.id || null,
+                    added_words: addedWords,
+                    is_activity: work.is_activity || false
+                }]);
+
+            const { data: settings } = await dbClient
+                .from('user_activity_settings')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            if (settings && work.is_activity) {
+                await this.updateTodayCheckin(settings, true);
+            }
+        } catch (err) {
+            console.error('Record word count failed:', err);
+        }
+    },
+
+    async updateCheckinWithAddedWords(addedWords) {
+        if (!this.currentUser || addedWords <= 0) return;
+
+        try {
+            const { data: settings } = await dbClient
+                .from('user_activity_settings')
+                .select('*')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            if (settings) {
+                await this.updateTodayCheckin(settings, true);
+            }
+        } catch (err) {
+            console.error('Update checkin failed:', err);
         }
     }
 };
