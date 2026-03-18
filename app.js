@@ -1167,7 +1167,12 @@ const App = {
             
             const submitBtn = document.querySelector('#submitForm button[type="submit"]');
             if (submitBtn) submitBtn.textContent = '保存修改';
-            
+
+            const activityGroup = document.getElementById('activityParticipationGroup');
+            if (activityGroup) {
+                activityGroup.style.display = 'none';
+            }
+
             this.navigateTo('submit');
         } catch (err) {
             console.error('Edit work failed:', err);
@@ -1202,6 +1207,11 @@ const App = {
         if (shortStoryGroup) shortStoryGroup.style.display = 'block';
         if (chaptersContainer) chaptersContainer.classList.remove('show');
         
+        const activityGroup = document.getElementById('activityParticipationGroup');
+        if (activityGroup) {
+            activityGroup.style.display = 'block';
+        }
+
         const chaptersList = document.getElementById('chaptersList');
         if (chaptersList) {
             chaptersList.innerHTML = `
@@ -2096,6 +2106,14 @@ const App = {
         if (!this.currentUser) return;
 
         try {
+            const { data: settings } = await dbClient
+                .from('user_activity_settings')
+                .select('daily_goal')
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            const dailyGoal = settings?.daily_goal || 50;
+
             const today = new Date();
             const thirtyDaysAgo = new Date(today);
             thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -2113,7 +2131,8 @@ const App = {
             }
 
             let streak = 0;
-            const checkinDates = (checkins || []).map(c => c.date);
+            const validCheckins = (checkins || []).filter(c => (c.word_count || 0) >= dailyGoal);
+            const checkinDates = validCheckins.map(c => c.date);
             const todayStr = today.toISOString().split('T')[0];
             
             let checkDate = new Date(today);
