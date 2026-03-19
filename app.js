@@ -565,7 +565,10 @@ const App = {
         }
 
         if (page === 'works') {
-            this.loadWorks();
+            if (!this._worksLoaded) {
+                this.loadWorks();
+                this._worksLoaded = true;
+            }
         }
         
         this.currentPage = page;
@@ -1517,7 +1520,7 @@ const App = {
                     : '';
                 
                 return `
-                    <div class="work-card animate-on-scroll stagger-${(index % 6) + 1}" 
+                    <div class="work-card animate-on-scroll animated stagger-${(index % 6) + 1}" 
                          onclick="App.showWorkDetail(${work.id})">
                         <span class="work-type-badge ${typeClass}">${typeLabel}</span>
                         <h3 class="work-title">${work.title}</h3>
@@ -1531,8 +1534,6 @@ const App = {
                     </div>
                 `;
             }).join('');
-
-            this.initScrollAnimations();
         } catch (err) {
             console.error('Load works failed:', err);
             grid.innerHTML = `<div class="empty-state"><p class="empty-state-text">加载失败</p></div>`;
