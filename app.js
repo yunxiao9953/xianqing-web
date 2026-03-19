@@ -19,6 +19,24 @@ const App = {
         this.initWorkTypeSelector();
         this.initWordCount();
         this.initAuth();
+        this.initHistory();
+    },
+
+    initHistory() {
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.page) {
+                this.navigateTo(e.state.page, false);
+            } else {
+                this.navigateTo('home', false);
+            }
+        });
+
+        const hash = window.location.hash.slice(1);
+        if (hash) {
+            this.navigateTo(hash, false);
+        } else {
+            this.navigateTo('home', false);
+        }
     },
 
     initAuth() {
@@ -512,7 +530,7 @@ const App = {
         });
     },
 
-    navigateTo(page) {
+    navigateTo(page, addToHistory = true) {
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
         
@@ -525,6 +543,10 @@ const App = {
         }
         if (targetLink) {
             targetLink.classList.add('active');
+        }
+
+        if (addToHistory && page !== this.currentPage) {
+            history.pushState({ page }, '', `#${page}`);
         }
         
         if (page === 'profile') {
@@ -1372,9 +1394,10 @@ const App = {
             });
         }, observerOptions);
 
-        document.querySelectorAll('.animate-on-scroll').forEach(el => {
-            el.classList.remove('animated');
-            observer.observe(el);
+        document.querySelectorAll('.animate-on-scroll:not(.no-reanimate)').forEach(el => {
+            if (!el.classList.contains('animated')) {
+                observer.observe(el);
+            }
         });
 
         this.addAnimationClasses();
@@ -1609,6 +1632,28 @@ const App = {
                 </div>
             ` : '';
 
+            const likeSection = work.visibility === 'public' ? `
+                <div class="like-section" id="likeSection">
+                    <button class="like-btn" id="likeBtn" onclick="App.toggleLike(${work.id})">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                        <span id="likeCount">0</span>
+                    </button>
+                </div>
+            ` : '';
+
+            const commentSection = work.visibility === 'public' ? `
+                <div class="comment-section" id="commentSection">
+                    <h3 class="comment-title">评论区</h3>
+                    <div class="comment-form" id="commentForm">
+                        <textarea id="commentInput" class="form-textarea" placeholder="写下你的评论..." rows="3"></textarea>
+                        <button class="btn btn-primary btn-sm" onclick="App.submitComment(${work.id})">发表评论</button>
+                    </div>
+                    <div class="comments-list" id="commentsList"></div>
+                </div>
+            ` : '';
+
             detail.innerHTML = `
                 <div class="work-detail-header">
                     <span class="work-detail-type ${typeClass}">${typeLabel}</span>
@@ -1622,7 +1667,14 @@ const App = {
                 </div>
                 ${contentHtml}
                 ${actionsHtml}
+                ${likeSection}
+                ${commentSection}
             `;
+
+            if (work.visibility === 'public') {
+                this.loadLikes(work.id);
+                this.loadComments(work.id);
+            }
 
             if (work.work_type === 'chaptered' && work.chapters) {
                 this.initChapterNavigation();
@@ -2720,6 +2772,188 @@ const App = {
         } catch (err) {
             console.error('Save work activity settings failed:', err);
             this.showToast('保存失败', 'error');
+        }
+    },
+
+    async loadLikes(workId) {
+        try {
+            const { data: likes, error } = await dbClient
+                .from('work_likes')
+                .select('user_id')
+                .eq('work_id', workId);
+
+            if (error) {
+                console.error('Load likes failed:', error);
+                return;
+            }
+
+            const likeCount = document.getElementById('likeCount');
+            const likeBtn = document.getElementById('likeBtn');
+
+            if (likeCount) {
+                likeCount.textContent = (likes || []).length;
+            }
+
+            if (likeBtn && this.currentUser) {
+                const hasLiked = (likes || []).some(l => l.user_id === this.currentUser.id);
+                likeBtn.classList.toggle('liked', hasLiked);
+            }
+        } catch (err) {
+            console.error('Load likes failed:', err);
+        }
+    },
+
+    async toggleLike(workId) {
+        if (!this.currentUser) {
+            this.showToast('请先登录', 'error');
+            document.getElementById('loginModal').classList.add('show');
+            return;
+        }
+
+        try {
+            const { data: existingLike } = await dbClient
+                .from('work_likes')
+                .select('id')
+                .eq('work_id', workId)
+                .eq('user_id', this.currentUser.id)
+                .single();
+
+            const likeBtn = document.getElementById('likeBtn');
+            const likeCount = document.getElementById('likeCount');
+
+            if (existingLike) {
+                await dbClient
+                    .from('work_likes')
+                    .delete()
+                    .eq('id', existingLike.id);
+
+                if (likeBtn) likeBtn.classList.remove('liked');
+                const currentCount = parseInt(likeCount?.textContent || '0');
+                if (likeCount) likeCount.textContent = Math.max(0, currentCount - 1);
+            } else {
+                await dbClient
+                    .from('work_likes')
+                    .insert([{
+                        work_id: workId,
+                        user_id: this.currentUser.id
+                    }]);
+
+                if (likeBtn) likeBtn.classList.add('liked');
+                const currentCount = parseInt(likeCount?.textContent || '0');
+                if (likeCount) likeCount.textContent = currentCount + 1;
+            }
+        } catch (err) {
+            console.error('Toggle like failed:', err);
+            this.showToast('操作失败', 'error');
+        }
+    },
+
+    async loadComments(workId) {
+        try {
+            const { data: comments, error } = await dbClient
+                .from('work_comments')
+                .select('*')
+                .eq('work_id', workId)
+                .order('created_at', { ascending: false });
+
+            const commentsList = document.getElementById('commentsList');
+            if (!commentsList) return;
+
+            if (!comments || comments.length === 0) {
+                commentsList.innerHTML = '<p class="empty-comments">暂无评论，快来抢沙发吧！</p>';
+                return;
+            }
+
+            const { data: users } = await dbClient
+                .from('users')
+                .select('id, username, display_name')
+                .in('id', [...new Set(comments.map(c => c.user_id))]);
+
+            const userMap = {};
+            (users || []).forEach(u => {
+                userMap[u.id] = u.display_name || u.username || '用户';
+            });
+
+            commentsList.innerHTML = comments.map(comment => {
+                const isOwner = this.currentUser && comment.user_id === this.currentUser.id;
+                const canDelete = isOwner || this.isAdmin;
+
+                return `
+                    <div class="comment-item" data-id="${comment.id}">
+                        <div class="comment-avatar">${(userMap[comment.user_id] || '用').charAt(0)}</div>
+                        <div class="comment-content">
+                            <div class="comment-header">
+                                <span class="comment-author">${userMap[comment.user_id] || '用户'}</span>
+                                <span class="comment-time">${this.formatDate(comment.created_at)}</span>
+                                ${canDelete ? `<button class="comment-delete-btn" onclick="App.deleteComment(${comment.id}, ${workId})">删除</button>` : ''}
+                            </div>
+                            <p class="comment-text">${comment.content}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (err) {
+            console.error('Load comments failed:', err);
+        }
+    },
+
+    async submitComment(workId) {
+        if (!this.currentUser) {
+            this.showToast('请先登录', 'error');
+            document.getElementById('loginModal').classList.add('show');
+            return;
+        }
+
+        const input = document.getElementById('commentInput');
+        const content = input?.value?.trim();
+
+        if (!content) {
+            this.showToast('请输入评论内容', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await dbClient
+                .from('work_comments')
+                .insert([{
+                    work_id: workId,
+                    user_id: this.currentUser.id,
+                    content: content
+                }]);
+
+            if (error) {
+                this.showToast('评论失败：' + error.message, 'error');
+                return;
+            }
+
+            if (input) input.value = '';
+            this.showToast('评论成功！', 'success');
+            this.loadComments(workId);
+        } catch (err) {
+            console.error('Submit comment failed:', err);
+            this.showToast('评论失败', 'error');
+        }
+    },
+
+    async deleteComment(commentId, workId) {
+        if (!confirm('确定要删除这条评论吗？')) return;
+
+        try {
+            const { error } = await dbClient
+                .from('work_comments')
+                .delete()
+                .eq('id', commentId);
+
+            if (error) {
+                this.showToast('删除失败', 'error');
+                return;
+            }
+
+            this.showToast('评论已删除', 'success');
+            this.loadComments(workId);
+        } catch (err) {
+            console.error('Delete comment failed:', err);
+            this.showToast('删除失败', 'error');
         }
     }
 };
