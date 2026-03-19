@@ -734,6 +734,7 @@ const App = {
         const activity = {
             title: formData.get('activityTitle'),
             date_text: formData.get('activityDate'),
+            date: new Date().toISOString().split('T')[0],
             image: formData.get('activityImage') || null,
             description: formData.get('activityDesc')
         };
