@@ -597,6 +597,7 @@ const App = {
                     <strong>${act.title}</strong>
                     <p style="margin:5px 0 0;font-size:12px;color:#666;">${act.date_text || act.date || ''}</p>
                 </div>
+                <button class="btn btn-sm" onclick="App.editActivity(${act.id})" style="margin-right:8px;">修改</button>
                 <button class="btn btn-sm btn-danger" onclick="App.deleteActivity(${act.id})">删除</button>
             </div>
         `).join('') || '<p>暂无活动</p>';
@@ -771,6 +772,79 @@ const App = {
         }
 
         this.showToast('活动已删除', 'success');
+        this.loadAdminPanel();
+    },
+
+    async editActivity(activityId) {
+        const { data: activity, error } = await dbClient
+            .from('activities')
+            .select('*')
+            .eq('id', activityId)
+            .single();
+
+        if (error || !activity) {
+            this.showToast('活动不存在', 'error');
+            return;
+        }
+
+        const formHtml = `
+            <div class="admin-edit-form" style="background:var(--bg-card);padding:24px;border-radius:8px;margin-bottom:20px;">
+                <h4 style="margin-bottom:16px;">修改活动</h4>
+                <form id="editActivityForm">
+                    <div class="form-group">
+                        <label class="form-label">活动标题</label>
+                        <input type="text" name="activityTitle" class="form-input" value="${activity.title || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">活动时间</label>
+                        <input type="text" name="activityDate" class="form-input" value="${activity.date_text || ''}" placeholder="如：2024年1月1日" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">活动描述</label>
+                        <textarea name="activityDesc" class="form-textarea" rows="3">${activity.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">活动图片URL</label>
+                        <input type="text" name="activityImage" class="form-input" value="${activity.image || ''}" placeholder="图片链接">
+                    </div>
+                    <div style="display:flex;gap:12px;margin-top:16px;">
+                        <button type="submit" class="btn btn-primary btn-sm">保存修改</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="App.loadAdminPanel()">取消</button>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        const adminPanel = document.getElementById('adminPanel');
+        if (adminPanel) {
+            adminPanel.innerHTML = formHtml;
+            document.getElementById('editActivityForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleUpdateActivity(activityId, document.getElementById('editActivityForm'));
+            });
+        }
+    },
+
+    async handleUpdateActivity(activityId, form) {
+        const formData = new FormData(form);
+        const activity = {
+            title: formData.get('activityTitle'),
+            date_text: formData.get('activityDate'),
+            image: formData.get('activityImage') || null,
+            description: formData.get('activityDesc')
+        };
+
+        const { error } = await dbClient
+            .from('activities')
+            .update(activity)
+            .eq('id', activityId);
+
+        if (error) {
+            this.showToast('修改失败：' + error.message, 'error');
+            return;
+        }
+
+        this.showToast('活动已修改！', 'success');
         this.loadAdminPanel();
     },
 
