@@ -563,6 +563,10 @@ const App = {
         if (page === 'writing-activity') {
             this.loadActivityPage();
         }
+
+        if (page === 'works') {
+            this.loadWorks();
+        }
         
         this.currentPage = page;
         window.scrollTo(0, 0);
