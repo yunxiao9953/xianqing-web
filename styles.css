@@ -1445,6 +1445,12 @@ body {
     background: var(--bg-secondary);
 }
 
+.btn-primary .btn-text:hover,
+.btn-primary .btn-text {
+    background: transparent;
+    color: white;
+}
+
 .user-info {
     display: flex;
     align-items: center;
