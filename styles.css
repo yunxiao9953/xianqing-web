@@ -516,11 +516,13 @@ body {
     cursor: pointer;
     transition: all 0.2s ease;
     box-shadow: var(--shadow-sm);
+    margin-bottom: 16px;
 }
 
 .back-btn:hover {
-    border-color: var(--accent-light);
-    color: var(--text-primary);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    background: var(--bg-card);
 }
 
 .back-btn svg {
