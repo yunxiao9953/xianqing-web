@@ -8,8 +8,18 @@ const App = {
     profileTab: 'all',
     editingWorkId: null,
     isAdmin: false,
+    isOnline: navigator.onLine,
+    retryCount: 0,
+    maxRetries: 3,
+    activityConfig: {
+        startDate: new Date('2026-04-10T00:01:00'),
+        endDate: new Date('2026-05-10T23:59:59')
+    },
+    countdownInterval: null,
     
     init() {
+        this.initNetworkStatus();
+        this.hideLoadingOverlay();
         this.checkSession();
         this.initNavigation();
         this.initForms();
@@ -20,6 +30,55 @@ const App = {
         this.initWordCount();
         this.initAuth();
         this.initHistory();
+    },
+
+    hideLoadingOverlay() {
+        setTimeout(() => {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                setTimeout(() => overlay.remove(), 300);
+            }
+        }, 500);
+    },
+
+    initNetworkStatus() {
+        window.addEventListener('online', () => {
+            this.isOnline = true;
+            this.hideOfflineNotice();
+            this.showToast('网络已恢复', 'success');
+        });
+
+        window.addEventListener('offline', () => {
+            this.isOnline = false;
+            this.showOfflineNotice();
+            this.showToast('网络连接已断开', 'error');
+        });
+    },
+
+    showOfflineNotice() {
+        const notice = document.getElementById('offlineNotice');
+        if (notice) notice.classList.add('show');
+    },
+
+    hideOfflineNotice() {
+        const notice = document.getElementById('offlineNotice');
+        if (notice) notice.classList.remove('show');
+    },
+
+    async withRetry(fn, retries = 3) {
+        for (let i = 0; i < retries; i++) {
+            try {
+                if (!this.isOnline) {
+                    throw new Error('网络未连接');
+                }
+                return await fn();
+            } catch (err) {
+                console.error(`尝试 ${i + 1}/${retries} 失败:`, err);
+                if (i === retries - 1) throw err;
+                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+            }
+        }
     },
 
     initHistory() {
@@ -590,6 +649,20 @@ const App = {
             .select('*')
             .order('created_at', { ascending: false });
 
+        const { data: activityWorks } = await dbClient
+            .from('works')
+            .select('id, title, author, is_activity, activity_track')
+            .eq('is_activity', true);
+
+        const activityWorksHtml = (activityWorks || []).map(work => `
+            <div class="admin-work-item">
+                <div style="flex:1;">
+                    <strong>${work.title}</strong>
+                    <p style="margin:5px 0 0;font-size:12px;color:#666;">作者：${work.author} | 赛道：${work.activity_track === 'ai' ? 'AI辅助' : '传统'}</p>
+                </div>
+            </div>
+        `).join('') || '<p>暂无参赛作品</p>';
+
         const activitiesHtml = (activities.data || []).map(act => `
             <div class="admin-activity-item">
                 ${act.image ? `<img src="${act.image}" alt="${act.title}" style="width:80px;height:60px;object-fit:cover;border-radius:4px;">` : ''}
@@ -613,6 +686,23 @@ const App = {
         `).join('') || '<p>暂无公开作品</p>';
 
         adminPanel.innerHTML = `
+            <div class="admin-section">
+                <h3 class="section-subtitle">🏃 写作马拉松活动管理</h3>
+                <div style="background:var(--bg-secondary);padding:16px;border-radius:var(--radius-md);margin-bottom:16px;">
+                    <p style="font-size:14px;margin-bottom:12px;"><strong>活动时间：</strong>2026年4月10日 00:01 - 5月10日 23:59</p>
+                    <p style="font-size:14px;margin-bottom:12px;"><strong>当前状态：</strong>${this.isActivityActive() ? '🎉 活动进行中' : this.isActivityEnded() ? '🏁 活动已结束' : '⏰ 活动尚未开始'}</p>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <h4 style="font-size:14px;margin-bottom:8px;">当前参赛作品 (${(activityWorks || []).length} 篇)</h4>
+                    <div class="admin-list" style="max-height:200px;overflow-y:auto;">${activityWorksHtml}</div>
+                </div>
+                <button class="btn btn-danger" onclick="App.resetActivityWorks()" style="margin-top:8px;">
+                    重置活动数据（将参赛作品转为普通作品）
+                </button>
+                <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+                    ⚠️ 此操作会将所有参赛作品的打卡标记取消，作品本身不会被删除，会显示在普通社员作品展示中。
+                </p>
+            </div>
             <div class="admin-section">
                 <h3 class="section-subtitle">管理社团活动</h3>
                 <form id="activityForm" class="admin-form" style="margin-bottom:20px;">
@@ -863,6 +953,33 @@ const App = {
         this.loadAdminPanel();
     },
 
+    async resetActivityWorks() {
+        if (!confirm('确定要重置活动数据吗？这将把所有参赛作品转为普通作品，作品本身不会被删除。')) {
+            return;
+        }
+
+        try {
+            const { error } = await dbClient
+                .from('works')
+                .update({ 
+                    is_activity: false, 
+                    activity_track: null 
+                })
+                .eq('is_activity', true);
+
+            if (error) {
+                this.showToast('重置失败：' + error.message, 'error');
+                return;
+            }
+
+            this.showToast('活动数据已重置！所有参赛作品已转为普通作品', 'success');
+            this.loadAdminPanel();
+        } catch (err) {
+            console.error('Reset activity works failed:', err);
+            this.showToast('重置失败', 'error');
+        }
+    },
+
     initWorkTypeSelector() {
         const options = document.querySelectorAll('.work-type-option');
         const shortStoryGroup = document.getElementById('shortStoryGroup');
@@ -995,6 +1112,33 @@ const App = {
                 this.handleRecommend(recommendForm);
             });
         }
+
+        this.updateActivityParticipationUI();
+    },
+
+    updateActivityParticipationUI() {
+        const activityGroup = document.getElementById('activityParticipationGroup');
+        if (!activityGroup) return;
+
+        if (!this.isActivityActive()) {
+            const noInput = activityGroup.querySelector('input[value="no"]');
+            if (noInput) noInput.checked = true;
+            
+            activityGroup.innerHTML = `
+                <label class="form-label">
+                    <span class="label-text">参与打卡活动</span>
+                </label>
+                <div class="activity-participation-disabled">
+                    <div class="disabled-notice">
+                        ${!this.isActivityStarted() 
+                            ? '⏰ 活动尚未开始，无法参与打卡活动。活动将于 2026年4月10日 00:01 开始。' 
+                            : this.isActivityEnded() 
+                                ? '🏁 活动已结束，感谢大家的参与！'
+                                : '当前无法参与打卡活动'}
+                    </div>
+                </div>
+            `;
+        }
     },
 
     async handleSubmit(form) {
@@ -1009,6 +1153,11 @@ const App = {
         const visibility = formData.get('visibility') || 'public';
         const activityParticipation = formData.get('activityParticipation') || 'no';
         
+        if (activityParticipation !== 'no' && !this.isActivityActive()) {
+            this.showToast('活动尚未开始或已结束，无法参与打卡活动', 'error');
+            return;
+        }
+        
         const work = {
             title: formData.get('title'),
             author: formData.get('author'),
@@ -1017,8 +1166,8 @@ const App = {
             work_type: workType,
             visibility: visibility,
             word_count: 0,
-            is_activity: activityParticipation !== 'no',
-            activity_track: activityParticipation !== 'no' ? activityParticipation : null
+            is_activity: activityParticipation !== 'no' && this.isActivityActive(),
+            activity_track: (activityParticipation !== 'no' && this.isActivityActive()) ? activityParticipation : null
         };
 
         if (workType === 'short') {
@@ -1570,13 +1719,18 @@ const App = {
         if (!grid) return;
         
         try {
-            const { data: works, error } = await dbClient
-                .from('works')
-                .select('*')
-                .eq('visibility', 'public')
-                .order('created_at', { ascending: false });
+            const result = await this.withRetry(async () => {
+                const { data: works, error } = await dbClient
+                    .from('works')
+                    .select('*')
+                    .eq('visibility', 'public')
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                return works;
+            });
 
-            if (error || !works || works.length === 0) {
+            if (!result || result.length === 0) {
                 grid.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">📝</div>
@@ -1586,7 +1740,7 @@ const App = {
                 return;
             }
 
-            grid.innerHTML = works.map((work, index) => {
+            grid.innerHTML = result.map((work, index) => {
                 const typeLabel = work.work_type === 'chaptered' ? '连载' : '短篇';
                 const typeClass = work.work_type === 'chaptered' ? 'chaptered' : 'short';
                 const wordCount = work.word_count || 0;
@@ -1611,7 +1765,13 @@ const App = {
             }).join('');
         } catch (err) {
             console.error('Load works failed:', err);
-            grid.innerHTML = `<div class="empty-state"><p class="empty-state-text">加载失败</p></div>`;
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <p class="empty-state-text">加载失败，请检查网络连接</p>
+                    <button class="btn btn-secondary btn-sm" onclick="App.loadWorks()" style="margin-top:12px;">重新加载</button>
+                </div>
+            `;
         }
     },
 
@@ -1966,6 +2126,131 @@ const App = {
         return `${year}年${month}月${day}日`;
     },
 
+    isActivityStarted() {
+        return new Date() >= this.activityConfig.startDate;
+    },
+
+    isActivityEnded() {
+        return new Date() > this.activityConfig.endDate;
+    },
+
+    isActivityActive() {
+        return this.isActivityStarted() && !this.isActivityEnded();
+    },
+
+    getCountdown(targetDate) {
+        const now = new Date();
+        const diff = targetDate - now;
+        
+        if (diff <= 0) {
+            return { days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
+        }
+        
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        
+        return { days, hours, minutes, seconds, total: diff };
+    },
+
+    renderCountdown() {
+        const container = document.getElementById('activityCountdown');
+        if (!container) return;
+
+        if (this.isActivityEnded()) {
+            container.innerHTML = `
+                <div class="countdown-ended">
+                    <div class="countdown-ended-icon">🏁</div>
+                    <div class="countdown-ended-title">活动已结束</div>
+                    <div class="countdown-ended-desc">感谢大家的参与！</div>
+                </div>
+            `;
+            if (this.countdownInterval) {
+                clearInterval(this.countdownInterval);
+                this.countdownInterval = null;
+            }
+            return;
+        }
+
+        if (!this.isActivityStarted()) {
+            const countdown = this.getCountdown(this.activityConfig.startDate);
+            container.innerHTML = `
+                <div class="countdown-start">
+                    <div class="countdown-label">活动开始倒计时</div>
+                    <div class="countdown-timer">
+                        <div class="countdown-item">
+                            <span class="countdown-value">${countdown.days}</span>
+                            <span class="countdown-unit">天</span>
+                        </div>
+                        <div class="countdown-separator">:</div>
+                        <div class="countdown-item">
+                            <span class="countdown-value">${String(countdown.hours).padStart(2, '0')}</span>
+                            <span class="countdown-unit">时</span>
+                        </div>
+                        <div class="countdown-separator">:</div>
+                        <div class="countdown-item">
+                            <span class="countdown-value">${String(countdown.minutes).padStart(2, '0')}</span>
+                            <span class="countdown-unit">分</span>
+                        </div>
+                        <div class="countdown-separator">:</div>
+                        <div class="countdown-item">
+                            <span class="countdown-value">${String(countdown.seconds).padStart(2, '0')}</span>
+                            <span class="countdown-unit">秒</span>
+                        </div>
+                    </div>
+                    <div class="countdown-date">
+                        活动时间：2026年4月10日 - 5月10日
+                    </div>
+                    <div class="countdown-notice">
+                        ⏰ 活动尚未开始，请耐心等待
+                    </div>
+                </div>
+            `;
+        } else {
+            const countdown = this.getCountdown(this.activityConfig.endDate);
+            container.innerHTML = `
+                <div class="countdown-end">
+                    <div class="countdown-label">活动结束倒计时</div>
+                    <div class="countdown-timer">
+                        <div class="countdown-item">
+                            <span class="countdown-value">${countdown.days}</span>
+                            <span class="countdown-unit">天</span>
+                        </div>
+                        <div class="countdown-separator">:</div>
+                        <div class="countdown-item">
+                            <span class="countdown-value">${String(countdown.hours).padStart(2, '0')}</span>
+                            <span class="countdown-unit">时</span>
+                        </div>
+                        <div class="countdown-separator">:</div>
+                        <div class="countdown-item">
+                            <span class="countdown-value">${String(countdown.minutes).padStart(2, '0')}</span>
+                            <span class="countdown-unit">分</span>
+                        </div>
+                        <div class="countdown-separator">:</div>
+                        <div class="countdown-item">
+                            <span class="countdown-value">${String(countdown.seconds).padStart(2, '0')}</span>
+                            <span class="countdown-unit">秒</span>
+                        </div>
+                    </div>
+                    <div class="countdown-status">
+                        🎉 活动进行中，欢迎投稿参赛！
+                    </div>
+                </div>
+            `;
+        }
+    },
+
+    startCountdown() {
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+        }
+        this.renderCountdown();
+        this.countdownInterval = setInterval(() => {
+            this.renderCountdown();
+        }, 1000);
+    },
+
     showToast(message, type = 'success') {
         const toast = document.getElementById('toast');
         if (!toast) return;
@@ -1982,7 +2267,37 @@ const App = {
     activitySettings: null,
 
     async loadActivityPage() {
-        if (!this.currentUser) {
+        this.startCountdown();
+        
+        if (!this.isActivityStarted()) {
+            document.getElementById('activitySettingsContent').innerHTML = `
+                <div class="activity-not-started">
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">
+                        ⏰ 活动尚未开始，请等待活动开始后再设置打卡
+                    </p>
+                </div>
+            `;
+            document.getElementById('activityWorksGrid').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏰</div>
+                    <p class="empty-state-text">活动尚未开始，暂无参赛作品</p>
+                </div>
+            `;
+            document.getElementById('wordCountRank').innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">活动尚未开始</p>';
+            document.getElementById('checkinDaysRank').innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">活动尚未开始</p>';
+            this.initActivityPageEvents();
+            return;
+        }
+
+        if (this.isActivityEnded()) {
+            document.getElementById('activitySettingsContent').innerHTML = `
+                <div class="activity-ended">
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">
+                        🏁 活动已结束，感谢大家的参与！
+                    </p>
+                </div>
+            `;
+        } else if (!this.currentUser) {
             document.getElementById('activitySettingsContent').innerHTML = `
                 <p style="color: var(--text-muted); text-align: center; padding: 20px;">
                     请先<a href="#" onclick="document.getElementById('loginModal').classList.add('show'); return false;">登录</a>参与打卡活动
